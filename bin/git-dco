@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# git-dco — one-shot DCO sign-off hook installer
+#
+# Usage:
+#   git dco init            Install per-repo hook (.githooks/prepare-commit-msg)
+#                           and set core.hooksPath to .githooks (local)
+#   git dco init --global   Install to ~/.githooks and set core.hooksPath globally
+#   git dco check           Diagnose current configuration
+#   git dco uninstall       Remove per-repo DCO hook and unset local hooksPath
+#   git dco --version       Print version
+#
+# The installed hook auto-appends a Signed-off-by trailer to every commit
+# message, so GitHub's DCO check passes without remembering `git commit -s`.
+
+set -euo pipefail
+
+VERSION="0.1.0"
+
+HOOK_BODY='#!/bin/sh
+# Auto sign-off for DCO (installed by `git dco`)
+COMMIT_MSG_FILE=$1
+COMMIT_SOURCE=${2:-}
+[ "$COMMIT_SOURCE" = "merge" ] && exit 0
+grep -q "^Signed-off-by:" "$COMMIT_MSG_FILE" && exit 0
+SOB=$(git var GIT_COMMITTER_IDENT | sed -n "s/^\(.*>\).*$/Signed-off-by: \1/p")
+printf "\n%s\n" "$SOB" >> "$COMMIT_MSG_FILE"
+'
+
+usage() {
+  sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+write_hook() {
+  local dir=$1
+  mkdir -p "$dir"
+  printf '%s' "$HOOK_BODY" > "$dir/prepare-commit-msg"
+  chmod +x "$dir/prepare-commit-msg"
+}
+
+install_repo() {
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+    echo "✗ Not inside a git repository." >&2
+    exit 1
+  }
+  local root
+  root=$(git rev-parse --show-toplevel)
+  write_hook "$root/.githooks"
+  git -C "$root" config --local core.hooksPath .githooks
+  echo "✓ Installed $root/.githooks/prepare-commit-msg"
+  echo "✓ Set core.hooksPath = .githooks (local)"
+  echo
+  echo "Next: commit normally — Signed-off-by trailer will be appended automatically."
+}
+
+install_global() {
+  write_hook "$HOME/.githooks"
+  git config --global core.hooksPath "$HOME/.githooks"
+  echo "✓ Installed $HOME/.githooks/prepare-commit-msg"
+  echo "✓ Set core.hooksPath = $HOME/.githooks (global)"
+}
+
+check() {
+  echo "git-dco version : $VERSION"
+  echo "user.name       : $(git config user.name || echo '(unset)')"
+  echo "user.email      : $(git config user.email || echo '(unset)')"
+  echo "global hooksPath: $(git config --global core.hooksPath || echo '(unset)')"
+  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    local root
+    root=$(git rev-parse --show-toplevel)
+    echo "repo root       : $root"
+    echo "local hooksPath : $(git -C "$root" config --local core.hooksPath || echo '(unset)')"
+    local hp
+    hp=$(git -C "$root" config core.hooksPath || echo .git/hooks)
+    case "$hp" in
+      /*) ;;
+      *)  hp="$root/$hp" ;;
+    esac
+    if [ -x "$hp/prepare-commit-msg" ]; then
+      echo "✓ Executable prepare-commit-msg found at $hp"
+    else
+      echo "✗ No executable prepare-commit-msg in $hp"
+    fi
+  else
+    echo "(not inside a git repository — skipping repo-level checks)"
+  fi
+}
+
+uninstall_repo() {
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+    echo "✗ Not inside a git repository." >&2
+    exit 1
+  }
+  local root
+  root=$(git rev-parse --show-toplevel)
+  git -C "$root" config --local --unset core.hooksPath 2>/dev/null || true
+  rm -f "$root/.githooks/prepare-commit-msg"
+  # Clean up empty dir
+  rmdir "$root/.githooks" 2>/dev/null || true
+  echo "✓ Removed per-repo DCO hook and unset local core.hooksPath"
+}
+
+cmd=${1:-}
+case "$cmd" in
+  init)
+    shift
+    if [ "${1:-}" = "--global" ]; then
+      install_global
+    else
+      install_repo
+    fi
+    ;;
+  check)   check ;;
+  uninstall) uninstall_repo ;;
+  -v|--version) echo "git-dco $VERSION" ;;
+  -h|--help|"") usage ;;
+  *)
+    echo "Unknown command: $cmd" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
