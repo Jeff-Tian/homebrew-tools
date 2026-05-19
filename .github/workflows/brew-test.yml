@@ -1,0 +1,74 @@
+name: brew test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-formula:
+    name: brew test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-latest]
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      HOMEBREW_NO_ANALYTICS: "1"
+    steps:
+      - name: Checkout tap
+        uses: actions/checkout@v4
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - name: brew style
+        run: brew style ./Formula
+
+      - name: Link checkout as a Homebrew tap
+        run: |
+          set -euo pipefail
+          tap_dir="$(brew --repository)/Library/Taps/jeff-tian/homebrew-tools"
+          mkdir -p "$(dirname "$tap_dir")"
+          ln -snf "$GITHUB_WORKSPACE" "$tap_dir"
+          brew tap | grep -q '^jeff-tian/tools$'
+
+      - name: brew audit
+        run: brew audit --strict --formula jeff-tian/tools/git-dco
+
+      - name: Install
+        run: brew install --build-from-source --formula jeff-tian/tools/git-dco
+
+      - name: Verify CLI
+        run: |
+          git-dco --version
+          git-dco --help
+
+      - name: Smoke test in a temp repo
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          cd "$tmp"
+          git init -q -b main
+          git config user.email "ci@example.com"
+          git config user.name "CI Bot"
+          git-dco init
+          git-dco check
+          echo hi > f
+          git add f
+          git commit -q -m "ci commit"
+          msg=$(git log -1 --format=%B)
+          echo "$msg"
+          echo "$msg" | grep -q "^Signed-off-by: CI Bot <ci@example.com>$"
+          git-dco uninstall
+          test ! -e .githooks/prepare-commit-msg
+
+      - name: brew test
+        run: brew test jeff-tian/tools/git-dco
