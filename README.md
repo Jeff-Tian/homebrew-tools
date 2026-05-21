@@ -17,6 +17,42 @@ brew tap jeff-tian/tools
 
 ## Tools
 
+### `git-auto-commit`
+
+Generate a Conventional / Angular-style commit message from the staged diff
+using the GitHub Models API, then commit. Inspired by the `auto-releasenotes`
+target in [`SimpleMultiApp`](https://github.com/Jeff-Tian/SimpleMultiApp).
+
+```sh
+brew install jeff-tian/tools/git-auto-commit
+
+cd ~/some/repo
+git add -p                       # stage what you want
+git auto-commit                  # AI drafts the message, then asks y/n/edit
+
+# Or in one shot:
+git auto-commit -a -y            # stage tracked changes + commit without prompt
+
+# Hint the model:
+git auto-commit --type=fix --scope=auth
+
+# Preview only:
+git auto-commit --dry-run
+git auto-commit --print          # message to stdout (CI-friendly)
+```
+
+Requires `git`, `curl`, `jq`, and a GitHub token with `models:read`. Reads
+`$GITHUB_TOKEN`, falling back to `gh auth token`. The model output language
+follows your recent commit history (中文 commits → 中文 message).
+
+Environment overrides:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `GIT_AUTO_COMMIT_MODEL` | `openai/gpt-4o-mini` | Model id passed to GitHub Models |
+| `GIT_AUTO_COMMIT_API`   | `https://models.github.ai/inference/chat/completions` | Endpoint override |
+| `GIT_AUTO_COMMIT_MAX_DIFF` | `12000` | Truncate the staged diff at N chars before sending |
+
 ### `git-dco`
 
 One-shot DCO sign-off hook installer. Adds a `prepare-commit-msg` hook that

@@ -1,0 +1,207 @@
+#!/usr/bin/env bash
+# git-auto-commit — generate a Conventional / Angular-style commit message
+# from staged changes using GitHub Models, then commit.
+#
+# Usage:
+#   git auto-commit                       # stage-as-is, ask for confirmation
+#   git auto-commit -a                    # also stage tracked modifications first
+#   git auto-commit -y                    # skip confirmation prompt
+#   git auto-commit --type=fix            # hint the commit type
+#   git auto-commit --scope=ui            # hint the scope
+#   git auto-commit --model=openai/gpt-4o-mini
+#   git auto-commit --dry-run             # print message, do not commit
+#   git auto-commit --print               # just print to stdout (no commit, no prompt)
+#   git auto-commit --no-body             # subject only
+#   git auto-commit --version
+#
+# Auth:
+#   Uses $GITHUB_TOKEN if set, otherwise falls back to `gh auth token`.
+#   The token needs `models:read` (default on personal tokens).
+#
+# Requirements: git, curl, jq. Optional: gh (for token fallback).
+
+set -euo pipefail
+
+VERSION="0.1.0"
+
+DEFAULT_MODEL="${GIT_AUTO_COMMIT_MODEL:-openai/gpt-4o-mini}"
+API_URL="${GIT_AUTO_COMMIT_API:-https://models.github.ai/inference/chat/completions}"
+MAX_DIFF_CHARS="${GIT_AUTO_COMMIT_MAX_DIFF:-12000}"
+
+usage() { sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; }
+
+assume_yes=0
+stage_all=0
+dry_run=0
+print_only=0
+include_body=1
+type_hint=""
+scope_hint=""
+model="$DEFAULT_MODEL"
+
+for arg in "$@"; do
+  case "$arg" in
+    -h|--help) usage; exit 0 ;;
+    -V|--version) echo "git-auto-commit $VERSION"; exit 0 ;;
+    -y|--yes) assume_yes=1 ;;
+    -a|--all) stage_all=1 ;;
+    --dry-run) dry_run=1 ;;
+    --print) print_only=1; dry_run=1; assume_yes=1 ;;
+    --no-body) include_body=0 ;;
+    --type=*) type_hint="${arg#*=}" ;;
+    --scope=*) scope_hint="${arg#*=}" ;;
+    --model=*) model="${arg#*=}" ;;
+    *) echo "✗ Unknown argument: $arg" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+command -v git >/dev/null 2>&1 || { echo "✗ git not found" >&2; exit 127; }
+command -v curl >/dev/null 2>&1 || { echo "✗ curl not found" >&2; exit 127; }
+command -v jq >/dev/null 2>&1 || { echo "✗ jq not found (brew install jq)" >&2; exit 127; }
+
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+  echo "✗ Not inside a git repository." >&2; exit 1;
+}
+
+if [ "$stage_all" = "1" ]; then
+  git add -u
+fi
+
+if git diff --cached --quiet; then
+  echo "✗ Nothing staged. Use -a to stage tracked changes, or 'git add' first." >&2
+  exit 1
+fi
+
+resolve_token() {
+  if [ -n "${GITHUB_TOKEN:-}" ]; then printf '%s' "$GITHUB_TOKEN"; return; fi
+  if command -v gh >/dev/null 2>&1; then gh auth token 2>/dev/null || true; fi
+}
+
+TOKEN="$(resolve_token)"
+if [ -z "$TOKEN" ]; then
+  echo "✗ No token. Set GITHUB_TOKEN or run 'gh auth login'." >&2
+  exit 1
+fi
+
+# Collect context for the model.
+diff_stat="$(git diff --cached --stat)"
+diff_body="$(git diff --cached --no-color)"
+if [ "${#diff_body}" -gt "$MAX_DIFF_CHARS" ]; then
+  diff_body="${diff_body:0:$MAX_DIFF_CHARS}
+
+[... diff truncated at ${MAX_DIFF_CHARS} chars ...]"
+fi
+recent_log="$(git log -n 10 --pretty=format:'%s' 2>/dev/null || true)"
+
+hint_line=""
+if [ -n "$type_hint" ] || [ -n "$scope_hint" ]; then
+  hint_line="Hints from the user: "
+  [ -n "$type_hint" ] && hint_line+="type=${type_hint} "
+  [ -n "$scope_hint" ] && hint_line+="scope=${scope_hint}"
+fi
+
+body_rule="A blank line, then a body of 1-4 short lines explaining what changed and why. \
+Use imperative mood. Wrap each line at ~72 chars."
+[ "$include_body" = "0" ] && body_rule="Do NOT include a body — output only the subject line."
+
+read -r -d '' SYSTEM_PROMPT <<EOF || true
+You write git commit messages that follow the Conventional Commits / Angular convention.
+
+Output format — strictly:
+  <type>(<optional scope>): <subject>
+  ${body_rule}
+
+Rules:
+- type ∈ feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+- subject: imperative mood, lowercase, no trailing period, <= 72 chars
+- scope: optional, short lowercase token derived from the touched area
+- Match the language of recent commits (Chinese subject → Chinese body, English → English)
+- For breaking changes, append "!" after the type/scope and add a "BREAKING CHANGE:" footer
+- Output ONLY the commit message — no code fences, no commentary, no "Here is..." preface
+EOF
+
+read -r -d '' USER_PROMPT <<EOF || true
+${hint_line}
+
+Recent commit subjects (for style reference):
+${recent_log:-<none>}
+
+Staged diff stat:
+${diff_stat}
+
+Staged diff:
+${diff_body}
+EOF
+
+payload="$(jq -n \
+  --arg model "$model" \
+  --arg sys "$SYSTEM_PROMPT" \
+  --arg usr "$USER_PROMPT" \
+  '{model: $model, temperature: 0.2,
+    messages: [{role:"system", content:$sys}, {role:"user", content:$usr}]}')"
+
+response="$(curl -sS -X POST "$API_URL" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  --data-binary "$payload")"
+
+message="$(printf '%s' "$response" | jq -r '.choices[0].message.content // empty' | \
+  sed -e 's/^```[a-zA-Z]*$//' -e 's/^```$//' | \
+  awk 'NF || p {p=1; print}')"
+
+# Trim trailing blank lines.
+message="$(printf '%s\n' "$message" | awk '
+  { lines[NR]=$0 }
+  END {
+    n=NR
+    while (n>0 && lines[n] ~ /^[[:space:]]*$/) n--
+    for (i=1;i<=n;i++) print lines[i]
+  }')"
+
+if [ -z "$message" ]; then
+  echo "✗ Model returned an empty message." >&2
+  echo "--- raw response ---" >&2
+  printf '%s\n' "$response" | head -40 >&2
+  exit 1
+fi
+
+if [ "$print_only" = "1" ]; then
+  printf '%s\n' "$message"
+  exit 0
+fi
+
+echo "── proposed commit ───────────────────────────────"
+printf '%s\n' "$message"
+echo "──────────────────────────────────────────────────"
+
+if [ "$dry_run" = "1" ]; then
+  echo "(dry-run — not committing)"
+  exit 0
+fi
+
+if [ "$assume_yes" = "0" ]; then
+  if [ ! -t 0 ]; then
+    echo "✗ Non-interactive shell — pass -y to commit without prompting." >&2
+    exit 1
+  fi
+  printf "Commit with this message? [Y/n/e(dit)] "
+  read -r reply </dev/tty
+  case "${reply:-y}" in
+    n|N|no|NO) echo "Aborted."; exit 1 ;;
+    e|E|edit)
+      tmp="$(mktemp -t git-auto-commit.XXXXXX)"
+      printf '%s\n' "$message" > "$tmp"
+      "${EDITOR:-vi}" "$tmp" </dev/tty >/dev/tty
+      message="$(cat "$tmp")"
+      rm -f "$tmp"
+      [ -z "${message//[[:space:]]/}" ] && { echo "✗ Empty message."; exit 1; }
+      ;;
+    *) ;;
+  esac
+fi
+
+tmp="$(mktemp -t git-auto-commit.XXXXXX)"
+printf '%s\n' "$message" > "$tmp"
+git commit -F "$tmp"
+rm -f "$tmp"
