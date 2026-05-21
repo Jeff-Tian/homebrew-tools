@@ -8,8 +8,8 @@ class GitAutoCommit < Formula
   license "MIT"
   head "https://github.com/Jeff-Tian/homebrew-tools.git", branch: "main"
 
-  depends_on "git"
   depends_on "curl"
+  depends_on "git"
   depends_on "jq"
 
   def install
