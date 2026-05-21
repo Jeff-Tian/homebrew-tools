@@ -37,7 +37,7 @@
 
 set -euo pipefail
 
-VERSION="0.1.0"
+VERSION="0.2.0"
 
 DEFAULT_MODEL="${GIT_AUTO_COMMIT_MODEL:-openai/gpt-4o-mini}"
 API_URL="${GIT_AUTO_COMMIT_API:-https://models.github.ai/inference/chat/completions}"
@@ -142,6 +142,11 @@ body_rule="A blank line, then a body of 1-4 short lines explaining what changed 
 Use imperative mood. Wrap each line at ~72 chars."
 [ "$include_body" = "0" ] && body_rule="Do NOT include a body — output only the subject line."
 
+ticket_rule=""
+if [ "$no_ticket" = "1" ]; then
+  ticket_rule="- TICKET BAN: do NOT include any ticket id (e.g. ABC-123, PROJ-9999, TICKET-1) in the scope or anywhere in the message, even if you see one in the branch name or recent commits."
+fi
+
 read -r -d '' SYSTEM_PROMPT <<EOF || true
 You write git commit messages that follow the Conventional Commits / Angular convention.
 
@@ -159,6 +164,7 @@ Rules:
   - Then add 1-2 short lowercase scopes you infer from the diff (file/module/area names).
   - Drop duplicates. Keep scope total to <= 4 items.
 - If no ticket and no hints and the diff is trivially single-area, scope is optional.
+${ticket_rule}
 - Match the language of recent commits (Chinese subject → Chinese body, English → English)
 - For breaking changes, append "!" after the closing paren and add a "BREAKING CHANGE:" footer
 - Output ONLY the commit message — no code fences, no commentary, no "Here is..." preface
