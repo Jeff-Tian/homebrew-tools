@@ -14,6 +14,7 @@
 #   git auto-commit --dry-run             # print message, do not commit
 #   git auto-commit --print               # just print to stdout (no commit, no prompt)
 #   git auto-commit --no-body             # subject only
+#   git auto-commit --no-sign-off         # skip DCO Signed-off-by trailer
 #   git auto-commit --version
 #
 # Scope rules:
@@ -22,6 +23,11 @@
 #   detected from the branch name (e.g. feature/CNCRM-8729-foo) or recent
 #   commit messages is auto-prepended as the first scope, followed by any
 #   model-inferred or user-hinted scopes. e.g. feat(CNCRM-8729, auth, ui): ...
+#
+# DCO:
+#   By default the final commit is created with `git commit -s`, appending a
+#   `Signed-off-by:` trailer (idempotent — safe alongside the `git dco` hook).
+#   Pass --no-sign-off to disable.
 #
 # Auth:
 #   Uses $GITHUB_TOKEN if set, otherwise falls back to `gh auth token`.
@@ -38,13 +44,14 @@ API_URL="${GIT_AUTO_COMMIT_API:-https://models.github.ai/inference/chat/completi
 MAX_DIFF_CHARS="${GIT_AUTO_COMMIT_MAX_DIFF:-12000}"
 TICKET_PATTERN="${GIT_AUTO_COMMIT_TICKET_PATTERN:-[A-Z][A-Z0-9]+-[0-9]+}"
 
-usage() { sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; }
 
 assume_yes=0
 stage_all=0
 dry_run=0
 print_only=0
 include_body=1
+sign_off=1
 no_ticket=0
 type_hint=""
 scope_hint=""
@@ -60,6 +67,8 @@ for arg in "$@"; do
     --dry-run) dry_run=1 ;;
     --print) print_only=1; dry_run=1; assume_yes=1 ;;
     --no-body) include_body=0 ;;
+    --sign-off|-s) sign_off=1 ;;
+    --no-sign-off) sign_off=0 ;;
     --type=*) type_hint="${arg#*=}" ;;
     --scope=*) scope_hint="${arg#*=}" ;;
     --ticket=*) ticket_override="${arg#*=}" ;;
@@ -265,5 +274,7 @@ fi
 
 tmp="$(mktemp -t git-auto-commit.XXXXXX)"
 printf '%s\n' "$message" > "$tmp"
-git commit -F "$tmp"
+commit_args=(-F "$tmp")
+[ "$sign_off" = "1" ] && commit_args+=(-s)
+git commit "${commit_args[@]}"
 rm -f "$tmp"

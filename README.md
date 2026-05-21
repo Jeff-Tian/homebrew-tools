@@ -38,6 +38,7 @@ git auto-commit --type=fix --scope=auth
 git auto-commit --scope="auth, ui"          # multiple extra scopes
 git auto-commit --ticket=ABC-123            # force a specific ticket id
 git auto-commit --no-ticket                 # opt out of ticket auto-prepend
+git auto-commit --no-sign-off               # opt out of DCO Signed-off-by trailer
 
 # Preview only:
 git auto-commit --dry-run
@@ -67,6 +68,13 @@ feat(CNCRM-8729, auth, ui): add OAuth login screen
 
 Pass `--no-ticket` to disable, or set `GIT_AUTO_COMMIT_TICKET_PATTERN` to a
 custom regex (e.g. for `#1234` or `JIRA_1234`-style ids).
+
+#### DCO sign-off
+
+By default `git auto-commit` runs `git commit -s`, appending a
+`Signed-off-by: Your Name <you@example.com>` trailer so the GitHub DCO check
+passes. This is idempotent and safe to combine with the [`git dco`](#git-dco)
+hook — git won't add a duplicate trailer. Pass `--no-sign-off` to opt out.
 
 Environment overrides:
 
