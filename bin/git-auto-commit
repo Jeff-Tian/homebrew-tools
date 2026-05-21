@@ -37,7 +37,7 @@
 
 set -euo pipefail
 
-VERSION="0.2.0"
+VERSION="0.2.1"
 
 DEFAULT_MODEL="${GIT_AUTO_COMMIT_MODEL:-openai/gpt-4o-mini}"
 API_URL="${GIT_AUTO_COMMIT_API:-https://models.github.ai/inference/chat/completions}"
@@ -142,9 +142,12 @@ body_rule="A blank line, then a body of 1-4 short lines explaining what changed 
 Use imperative mood. Wrap each line at ~72 chars."
 [ "$include_body" = "0" ] && body_rule="Do NOT include a body — output only the subject line."
 
+# TICKET BAN applies whenever we have NO detected ticket — whether the user
+# explicitly passed --no-ticket or we simply couldn't infer one. Prevents the
+# model from hallucinating ids like TICKET-1 / ABC-123.
 ticket_rule=""
-if [ "$no_ticket" = "1" ]; then
-  ticket_rule="- TICKET BAN: do NOT include any ticket id (e.g. ABC-123, PROJ-9999, TICKET-1) in the scope or anywhere in the message, even if you see one in the branch name or recent commits."
+if [ -z "$ticket" ]; then
+  ticket_rule="- TICKET BAN: do NOT include any ticket id (e.g. ABC-123, PROJ-9999, TICKET-1, FOO-42) in the scope or anywhere in the message. No ticket was provided or detected; do not invent one."
 fi
 
 read -r -d '' SYSTEM_PROMPT <<EOF || true
@@ -233,6 +236,38 @@ if [ -n "$ticket" ]; then
         # No scope — add one.
         first_line="$(printf '%s' "$first_line" | sed -E "s/^([a-z]+)(!?): /\1(${ticket})\2: /")"
       fi
+    fi
+    if [ -n "$rest" ]; then
+      message="${first_line}
+${rest}"
+    else
+      message="$first_line"
+    fi
+  fi
+else
+  # Safety net: NO ticket detected/provided — scrub any hallucinated ticket id
+  # the model may have stuffed into the scope, even though the prompt forbade
+  # it. Operates on the subject line only.
+  first_line="$(printf '%s\n' "$message" | head -1)"
+  rest="$(printf '%s\n' "$message" | tail -n +2)"
+  if printf '%s' "$first_line" | grep -qE "^[a-z]+\(.+\)!?: "; then
+    scope="$(printf '%s' "$first_line" | sed -E "s/^[a-z]+\(([^)]+)\)!?: .*$/\1/")"
+    # Drop any comma-separated item that matches the ticket pattern.
+    cleaned="$(printf '%s' "$scope" | awk -v pat="^${TICKET_PATTERN}\$" '
+      BEGIN { FS=","; OFS=", " }
+      {
+        n=0
+        for (i=1;i<=NF;i++) {
+          gsub(/^[[:space:]]+|[[:space:]]+$/, "", $i)
+          if ($i !~ pat && $i != "") { n++; out[n]=$i }
+        }
+        for (i=1;i<=n;i++) { printf "%s%s", out[i], (i<n?", ":"") }
+      }')"
+    if [ -z "$cleaned" ]; then
+      # Scope was nothing but a hallucinated ticket — drop the parens entirely.
+      first_line="$(printf '%s' "$first_line" | sed -E "s/^([a-z]+)\([^)]+\)(!?: )/\1\2/")"
+    elif [ "$cleaned" != "$scope" ]; then
+      first_line="$(printf '%s' "$first_line" | sed -E "s/^([a-z]+)\([^)]+\)(!?: )/\1(${cleaned})\2/")"
     fi
     if [ -n "$rest" ]; then
       message="${first_line}

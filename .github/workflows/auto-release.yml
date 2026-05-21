@@ -1,0 +1,186 @@
+name: auto-release
+
+# Detects a VERSION bump in any bin/<tool> on push to main and publishes
+# a matching GitHub release. Tag format: <tool>-v<version>
+# Source of truth: the `VERSION="x.y.z"` line at the top of bin/<tool>.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bin/**'
+      - 'Formula/**'
+      - '.github/workflows/auto-release.yml'
+  workflow_dispatch:
+    inputs:
+      tool:
+        description: 'Tool name (bin/<tool>) — leave blank to scan all'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: release ${{ matrix.tool }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: [git-auto-commit, git-dco]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Skip if workflow_dispatch with a different tool
+        id: gate
+        run: |
+          set -euo pipefail
+          requested='${{ github.event.inputs.tool }}'
+          if [ -n "$requested" ] && [ "$requested" != '${{ matrix.tool }}' ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Read VERSION from bin/${{ matrix.tool }}
+        if: steps.gate.outputs.skip != 'true'
+        id: read
+        run: |
+          set -euo pipefail
+          script="bin/${{ matrix.tool }}"
+          if [ ! -f "$script" ]; then
+            echo "::notice::$script not found, skipping"
+            echo "version=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          version="$(grep -E '^VERSION="[^"]+"' "$script" | head -1 | sed -E 's/^VERSION="([^"]+)"/\1/')"
+          if [ -z "$version" ]; then
+            echo "::error::No VERSION=\"x.y.z\" line found in $script"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Detected: ${{ matrix.tool }} version $version"
+
+      - name: Check formula version matches
+        if: steps.read.outputs.version != ''
+        run: |
+          set -euo pipefail
+          formula="Formula/${{ matrix.tool }}.rb"
+          if [ ! -f "$formula" ]; then
+            echo "::warning::$formula missing — skipping formula check"
+            exit 0
+          fi
+          formula_version="$(grep -E '^\s*version\s+"[^"]+"' "$formula" | head -1 | sed -E 's/^\s*version\s+"([^"]+)".*$/\1/')"
+          script_version='${{ steps.read.outputs.version }}'
+          if [ -z "$formula_version" ]; then
+            echo "::warning::No version line in $formula — skipping check"
+            exit 0
+          fi
+          if [ "$formula_version" != "$script_version" ]; then
+            echo "::error::Version mismatch: bin says $script_version, formula says $formula_version. Bump both before releasing."
+            exit 1
+          fi
+          echo "Formula version $formula_version matches script."
+
+      - name: Check tag does not already exist
+        if: steps.read.outputs.version != ''
+        id: tagcheck
+        run: |
+          set -euo pipefail
+          tag="${{ matrix.tool }}-v${{ steps.read.outputs.version }}"
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "::notice::Tag $tag already exists locally — release already published"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          elif gh release view "$tag" >/dev/null 2>&1; then
+            echo "::notice::Release $tag already exists on GitHub"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Legacy tag check for git-auto-commit only: the v0.2.0 release was
+      # published under the bare `v<version>` scheme before this workflow
+      # existed. Treat that as "already released" too.
+      - name: Check legacy bare tag (git-auto-commit only)
+        if: steps.read.outputs.version != '' && matrix.tool == 'git-auto-commit' && steps.tagcheck.outputs.exists != 'true'
+        id: legacy
+        run: |
+          set -euo pipefail
+          legacy="v${{ steps.read.outputs.version }}"
+          if git rev-parse -q --verify "refs/tags/$legacy" >/dev/null; then
+            echo "::notice::Legacy tag $legacy exists — release already published under old scheme"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compute previous tag for changelog
+        if: steps.read.outputs.version != '' && steps.tagcheck.outputs.exists != 'true' && steps.legacy.outputs.exists != 'true'
+        id: prev
+        run: |
+          set -euo pipefail
+          prefix="${{ matrix.tool }}-v"
+          prev="$(git tag --list "${prefix}*" --sort=-version:refname | head -1 || true)"
+          # Fall back to legacy bare-v tags for git-auto-commit
+          if [ -z "$prev" ] && [ '${{ matrix.tool }}' = 'git-auto-commit' ]; then
+            prev="$(git tag --list 'v*' --sort=-version:refname | head -1 || true)"
+          fi
+          echo "prev=$prev" >> "$GITHUB_OUTPUT"
+          echo "Previous tag: ${prev:-<none>}"
+
+      - name: Build release notes
+        if: steps.read.outputs.version != '' && steps.tagcheck.outputs.exists != 'true' && steps.legacy.outputs.exists != 'true'
+        id: notes
+        run: |
+          set -euo pipefail
+          tool='${{ matrix.tool }}'
+          version='${{ steps.read.outputs.version }}'
+          prev='${{ steps.prev.outputs.prev }}'
+          notes_file="$(mktemp)"
+          {
+            echo "## ✨ $tool v$version"
+            echo
+            echo "### Changes"
+            if [ -n "$prev" ]; then
+              git log --pretty=format:'- %s' "$prev"..HEAD -- "bin/$tool" "Formula/$tool.rb" | head -50
+              echo
+              echo
+              echo "**Full changelog:** https://github.com/${{ github.repository }}/compare/$prev...${tool}-v${version}"
+            else
+              echo "First automated release."
+              git log --pretty=format:'- %s' HEAD -- "bin/$tool" "Formula/$tool.rb" | head -20
+            fi
+            echo
+            echo
+            echo "### Upgrade"
+            echo '```bash'
+            echo "brew update && brew upgrade $tool"
+            echo '```'
+          } > "$notes_file"
+          echo "file=$notes_file" >> "$GITHUB_OUTPUT"
+          echo "----- notes -----"
+          cat "$notes_file"
+
+      - name: Create tag and GitHub release
+        if: steps.read.outputs.version != '' && steps.tagcheck.outputs.exists != 'true' && steps.legacy.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag='${{ steps.tagcheck.outputs.tag }}'
+          tool='${{ matrix.tool }}'
+          version='${{ steps.read.outputs.version }}'
+          notes='${{ steps.notes.outputs.file }}'
+
+          gh release create "$tag" \
+            --title "$tool v$version" \
+            --notes-file "$notes" \
+            --target "${{ github.sha }}"
+          echo "✓ Released $tag"
