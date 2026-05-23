@@ -108,9 +108,41 @@ function Assert-Manifest {
     }
 }
 
+function Assert-Installer {
+    $installerPath = Join-Path $repoRoot 'install.ps1'
+    if (-not (Test-Path $installerPath)) {
+        throw "Missing Windows installer: $installerPath"
+    }
+
+    $sandbox = Join-Path ([System.IO.Path]::GetTempPath()) ("homebrew-tools-install-test-{0}" -f ([guid]::NewGuid()))
+    New-Item -ItemType Directory -Path $sandbox | Out-Null
+    try {
+        & $installerPath -InstallDir $sandbox -NoPathUpdate -SkipDependencyCheck | Out-Host
+        if ($LASTEXITCODE -ne 0) {
+            throw "install.ps1 failed with exit code $LASTEXITCODE"
+        }
+
+        foreach ($fileName in @('git-auto-commit', 'git-auto-commit.cmd', 'git-dco', 'git-dco.cmd')) {
+            $installedPath = Join-Path $sandbox $fileName
+            if (-not (Test-Path $installedPath)) {
+                throw "install.ps1 should install $fileName to $sandbox"
+            }
+        }
+
+        $versionOutput = & (Join-Path $sandbox 'git-dco.cmd') --version
+        if ($LASTEXITCODE -ne 0 -or $versionOutput -notmatch 'git-dco') {
+            throw "installed git-dco.cmd should run through bash and print its version"
+        }
+    }
+    finally {
+        Remove-Item -Recurse -Force $sandbox -ErrorAction SilentlyContinue
+    }
+}
+
 Assert-Wrapper 'git-auto-commit'
 Assert-Wrapper 'git-dco'
 Assert-Manifest 'git-auto-commit' @('git', 'curl', 'jq')
 Assert-Manifest 'git-dco' @('git')
+Assert-Installer
 
 Write-Host 'Windows packaging checks passed.'

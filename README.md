@@ -17,22 +17,39 @@ brew tap jeff-tian/tools
 
 ## Install on Windows
 
-Windows installs are fully automated through Scoop. The Scoop manifests in this
-repository download the tool scripts and Windows command wrappers; no manual
-copying is required.
+For this private repository, use an authenticated clone and run the installer.
+It copies the tool scripts and Windows command wrappers into a user-level bin
+directory and updates your user `PATH`; no manual copying is required.
 
 ```powershell
-# If Scoop is not installed yet:
-Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-iwr -useb get.scoop.sh | iex
+# Authenticate once if needed:
+gh auth login
 
-# Add this repository as a Scoop bucket:
+# Clone or update the private repository:
+$repo = Join-Path $env:LOCALAPPDATA 'JeffTian\homebrew-tools'
+if (Test-Path $repo) {
+   git -C $repo pull --ff-only
+} else {
+   gh repo clone Jeff-Tian/homebrew-tools $repo
+}
+
+# Install dependencies through Scoop if missing, then install the tools:
+& "$repo\install.ps1" -InstallDependencies
+```
+
+If the repository is made public later, it can also be installed as a Scoop
+bucket:
+
+```powershell
 scoop bucket add jeff-tian-tools https://github.com/Jeff-Tian/homebrew-tools
-
-# Install dependencies and tools:
-scoop install git jq curl
 scoop install git-auto-commit git-dco
 ```
+
+If `scoop bucket add` rewrites the URL through an old mirror or proxy such as
+`scoop.201704.xyz`, clear the Scoop proxy first with `scoop config rm proxy`.
+For a private repository, prefer the authenticated clone installer above;
+Scoop's bucket and raw-file downloads are not a good fit for private GitHub
+repositories without extra credential plumbing.
 
 After installation, use the tools from PowerShell, Command Prompt, or Git Bash:
 
