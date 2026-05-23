@@ -1,0 +1,22 @@
+name: windows packaging
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-windows-packaging:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Windows packaging
+        shell: pwsh
+        run: ./tests/windows-packaging.ps1

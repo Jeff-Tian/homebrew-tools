@@ -15,6 +15,37 @@ form also works:
 brew tap jeff-tian/tools
 ```
 
+## Install on Windows
+
+Windows installs are fully automated through Scoop. The Scoop manifests in this
+repository download the tool scripts and Windows command wrappers; no manual
+copying is required.
+
+```powershell
+# If Scoop is not installed yet:
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+iwr -useb get.scoop.sh | iex
+
+# Add this repository as a Scoop bucket:
+scoop bucket add jeff-tian-tools https://github.com/Jeff-Tian/homebrew-tools
+
+# Install dependencies and tools:
+scoop install git jq curl
+scoop install git-auto-commit git-dco
+```
+
+After installation, use the tools from PowerShell, Command Prompt, or Git Bash:
+
+```powershell
+git auto-commit --version
+git dco --version
+git dco init
+```
+
+`git-auto-commit` can read `$env:GITHUB_TOKEN`; if it is not set, install and
+authenticate GitHub CLI (`scoop install gh`, then `gh auth login`) for token
+fallback.
+
 ## Tools
 
 ### `git-auto-commit`

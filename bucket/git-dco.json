@@ -1,0 +1,37 @@
+{
+    "version": "0.1.0",
+    "description": "One-shot DCO sign-off hook installer for git repositories",
+    "homepage": "https://github.com/Jeff-Tian/homebrew-tools",
+    "license": "MIT",
+    "depends": [
+        "git"
+    ],
+    "url": [
+        "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-dco#/git-dco",
+        "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-dco.cmd#/git-dco.cmd"
+    ],
+    "hash": [
+        "skip",
+        "skip"
+    ],
+    "bin": [
+        [
+            "git-dco.cmd",
+            "git-dco"
+        ]
+    ],
+    "checkver": {
+        "url": "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-dco",
+        "regex": "VERSION=\"([0-9.]+)\""
+    },
+    "autoupdate": {
+        "url": [
+            "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-dco#/git-dco",
+            "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-dco.cmd#/git-dco.cmd"
+        ],
+        "hash": [
+            "skip",
+            "skip"
+        ]
+    }
+}
