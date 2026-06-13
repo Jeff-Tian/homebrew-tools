@@ -4,7 +4,7 @@ class GitAutoCommit < Formula
   url "https://github.com/Jeff-Tian/homebrew-tools.git",
       branch: "main",
       using:  :git
-  version "0.2.1"
+  version "0.2.2"
   license "MIT"
   head "https://github.com/Jeff-Tian/homebrew-tools.git", branch: "main"
 

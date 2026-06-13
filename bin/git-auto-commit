@@ -37,7 +37,7 @@
 
 set -euo pipefail
 
-VERSION="0.2.1"
+VERSION="0.2.2"
 
 DEFAULT_MODEL="${GIT_AUTO_COMMIT_MODEL:-openai/gpt-4o-mini}"
 API_URL="${GIT_AUTO_COMMIT_API:-https://models.github.ai/inference/chat/completions}"
