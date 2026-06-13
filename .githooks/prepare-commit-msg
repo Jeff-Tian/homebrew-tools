@@ -1,0 +1,8 @@
+#!/bin/sh
+# Auto sign-off for DCO (installed by `git dco`)
+COMMIT_MSG_FILE=$1
+COMMIT_SOURCE=${2:-}
+[ "$COMMIT_SOURCE" = "merge" ] && exit 0
+grep -q "^Signed-off-by:" "$COMMIT_MSG_FILE" && exit 0
+SOB=$(git var GIT_COMMITTER_IDENT | sed -n "s/^\(.*>\).*$/Signed-off-by: \1/p")
+printf "\n%s\n" "$SOB" >> "$COMMIT_MSG_FILE"

@@ -195,6 +195,20 @@ payload="$(jq -n \
   '{model: $model, temperature: 0.2,
     messages: [{role:"system", content:$sys}, {role:"user", content:$usr}]}')"
 
+printf '🤖 Using model: %s\n' "$model"
+
+# Fetch current GitHub user info from the token.
+github_user=""
+if command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+  user_resp="$(curl -sS -w '\n%{http_code}' -H "Authorization: token $TOKEN" \
+    "https://api.github.com/user" 2>/dev/null || true)"
+  user_http="$(printf '%s\n' "$user_resp" | tail -1)"
+  if [ "$user_http" = "200" ]; then
+    github_user="$(printf '%s\n' "$user_resp" | sed '$d' | jq -r '.login // empty' 2>/dev/null || true)"
+  fi
+fi
+[ -n "$github_user" ] && printf '👤 GitHub: %s\n' "$github_user"
+
 response="$(curl -sS -X POST "$API_URL" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
