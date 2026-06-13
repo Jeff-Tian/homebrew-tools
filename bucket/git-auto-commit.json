@@ -1,5 +1,5 @@
 {
-    "version": "0.2.1",
+    "version": "0.2.2",
     "description": "Generate Conventional/Angular commit messages from staged diff via AI",
     "homepage": "https://github.com/Jeff-Tian/homebrew-tools",
     "license": "MIT",
