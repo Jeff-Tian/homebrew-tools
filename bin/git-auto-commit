@@ -2,6 +2,20 @@
 # git-auto-commit — generate a Conventional / Angular-style commit message
 # from staged changes using GitHub Models, then commit.
 #
+# Convention scanning:
+#   Before calling the model, the script scans the repo root for local commit
+#   guidelines in these locations (first match wins):
+#     .github/instructions/commit-conventions.instructions.md
+#     .github/instructions/commit*.instructions.md
+#     .github/commit-conventions.md
+#     .github/CONVENTIONS.md
+#     CONVENTIONS.md
+#     docs/commit-conventions.md
+#     .copilot/commit-conventions.md
+#     .squad/templates/commit.md
+#   Any conventions found are injected into the system prompt so the model
+#   follows repo-specific rules.
+#
 # Usage:
 #   git auto-commit                       # stage-as-is, ask for confirmation
 #   git auto-commit -a                    # also stage tracked modifications first
@@ -150,6 +164,46 @@ if [ -z "$ticket" ]; then
   ticket_rule="- TICKET BAN: do NOT include any ticket id (e.g. ABC-123, PROJ-9999, TICKET-1, FOO-42) in the scope or anywhere in the message. No ticket was provided or detected; do not invent one."
 fi
 
+# Scan the repo for commit conventions / guidelines that the model should follow.
+# Checks multiple locations in priority order.
+CONVENTIONS=""
+_scan_conventions() {
+  local root="$1"
+  # 1. .github/instructions/commit-conventions.instructions.md (or similar)
+  for f in "$root"/.github/instructions/commit-conventions.instructions.md \
+           "$root"/.github/instructions/commit*.instructions.md \
+           "$root"/.github/commit-conventions.md \
+           "$root"/.github/CONVENTIONS.md \
+           "$root"/CONVENTIONS.md \
+           "$root"/docs/commit-conventions.md \
+           "$root"/.copilot/commit-conventions.md; do
+    if [ -f "$f" ]; then
+      CONVENTIONS+="$(cat "$f")"$'\n'
+      break
+    fi
+  done
+  # 2. .git/hooks/commit-msg sample or template
+  if [ -z "$CONVENTIONS" ] && [ -f "$root/.git/hooks/commit-msg.sample" ]; then
+    CONVENTIONS+="# commit-msg.sample found in .git/hooks/ — it may contain local conventions.\n"
+  fi
+  # 3. .squad/templates/commit.md or similar
+  for f in "$root"/.squad/templates/commit.md \
+           "$root"/.squad/templates/commit-message.md; do
+    if [ -f "$f" ]; then
+      CONVENTIONS+="$(cat "$f")"$'\n'
+      break
+    fi
+  done
+}
+_repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+_scan_conventions "$_repo_root"
+
+# Inject conventions into the system prompt if any were found.
+conventions_rule=""
+if [ -n "$CONVENTIONS" ]; then
+  conventions_rule="- LOCAL CONVENTIONS: The repository has local commit guidelines. Follow them strictly:\n\n${CONVENTIONS}"
+fi
+
 read -r -d '' SYSTEM_PROMPT <<EOF || true
 You write git commit messages that follow the Conventional Commits / Angular convention.
 
@@ -170,8 +224,51 @@ Rules:
 ${ticket_rule}
 - Match the language of recent commits (Chinese subject → Chinese body, English → English)
 - For breaking changes, append "!" after the closing paren and add a "BREAKING CHANGE:" footer
+${conventions_rule}
 - Output ONLY the commit message — no code fences, no commentary, no "Here is..." preface
 EOF
+
+if [ "$print_only" = "1" ]; then
+  printf '%s\n' "$message"
+  exit 0
+fi
+
+echo "── proposed commit ───────────────────────────────"
+printf '%s\n' "$message"
+echo "──────────────────────────────────────────────────"
+
+if [ "$dry_run" = "1" ]; then
+  echo "(dry-run — not committing)"
+  exit 0
+fi
+
+if [ "$assume_yes" = "0" ]; then
+  if [ ! -t 0 ]; then
+    echo "✗ Non-interactive shell — pass -y to commit without prompting." >&2
+    exit 1
+  fi
+  printf "Commit with this message? [Y/n/e(dit)] "
+  read -r reply </dev/tty
+  case "${reply:-y}" in
+    n|N|no|NO) echo "Aborted."; exit 1 ;;
+    e|E|edit)
+      tmp="$(mktemp -t git-auto-commit.XXXXXX)"
+      printf '%s\n' "$message" > "$tmp"
+      "${EDITOR:-vi}" "$tmp" </dev/tty >/dev/tty
+      message="$(cat "$tmp")"
+      rm -f "$tmp"
+      [ -z "${message//[[:space:]]/}" ] && { echo "✗ Empty message."; exit 1; }
+      ;;
+    *) ;;
+  esac
+fi
+
+tmp="$(mktemp -t git-auto-commit.XXXXXX)"
+printf '%s\n' "$message" > "$tmp"
+commit_args=(-F "$tmp")
+[ "$sign_off" = "1" ] && commit_args+=(-s)
+git commit "${commit_args[@]}"
+rm -f "$tmp"
 
 read -r -d '' USER_PROMPT <<EOF || true
 ${hint_line}
