@@ -4,9 +4,14 @@ class GitAutoCommit < Formula
   url "https://github.com/Jeff-Tian/homebrew-tools.git",
       branch: "main",
       using:  :git
-  version "0.2.2"
   license "MIT"
   head "https://github.com/Jeff-Tian/homebrew-tools.git", branch: "main"
+
+  def version
+    # Read version from the canonical JSON manifest
+    json = File.read(File.join(__dir__, "../bucket/git-auto-commit.json"))
+    JSON.parse(json)["version"]
+  end
 
   depends_on "curl"
   depends_on "git"
