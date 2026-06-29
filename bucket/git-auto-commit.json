@@ -1,42 +1,42 @@
 {
-    "version": "0.2.4",
-    "description": "Generate Conventional/Angular commit messages from staged diff via AI",
-    "homepage": "https://github.com/Jeff-Tian/homebrew-tools",
-    "license": "MIT",
-    "depends": [
-        "git",
-        "curl",
-        "jq"
-    ],
+  "version": "0.2.4",
+  "description": "Generate Conventional/Angular commit messages from staged diff via AI",
+  "homepage": "https://github.com/Jeff-Tian/homebrew-tools",
+  "license": "MIT",
+  "depends": [
+    "git",
+    "curl",
+    "jq"
+  ],
+  "url": [
+    "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit#/git-auto-commit",
+    "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit.cmd#/git-auto-commit.cmd"
+  ],
+  "hash": [
+    "skip",
+    "skip"
+  ],
+  "bin": [
+    [
+      "git-auto-commit.cmd",
+      "git-auto-commit"
+    ]
+  ],
+  "suggest": {
+    "GitHub CLI token fallback": "gh"
+  },
+  "checkver": {
+    "url": "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit",
+    "regex": "VERSION=\"([0-9.]+)\""
+  },
+  "autoupdate": {
     "url": [
-        "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit#/git-auto-commit",
-        "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit.cmd#/git-auto-commit.cmd"
+      "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit#/git-auto-commit",
+      "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit.cmd#/git-auto-commit.cmd"
     ],
     "hash": [
-        "skip",
-        "skip"
-    ],
-    "bin": [
-        [
-            "git-auto-commit.cmd",
-            "git-auto-commit"
-        ]
-    ],
-    "suggest": {
-        "GitHub CLI token fallback": "gh"
-    },
-    "checkver": {
-        "url": "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit",
-        "regex": "VERSION=\"([0-9.]+)\""
-    },
-    "autoupdate": {
-        "url": [
-            "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit#/git-auto-commit",
-            "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit.cmd#/git-auto-commit.cmd"
-        ],
-        "hash": [
-            "skip",
-            "skip"
-        ]
-    }
+      "skip",
+      "skip"
+    ]
+  }
 }
