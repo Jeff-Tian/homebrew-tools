@@ -52,7 +52,15 @@ jobs:
       - name: Verify CLI
         run: |
           git-dco --version
-          git-dco --help
+
+      - name: Trigger auto-release on success
+        if: github.ref == 'refs/heads/main' && github.event_name != 'workflow_call'
+        run: |
+          gh workflow run auto-release.yml \
+            -R "${{ github.repository }}" \
+            -f tool=""
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Smoke test in a temp repo
         run: |
@@ -121,3 +129,12 @@ jobs:
         run: |
           set -euo pipefail
           bash -n "$(which git-auto-commit)"
+
+      - name: Trigger auto-release on success
+        if: github.ref == 'refs/heads/main' && github.event_name != 'workflow_call'
+        run: |
+          gh workflow run auto-release.yml \
+            -R "${{ github.repository }}" \
+            -f tool=""
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

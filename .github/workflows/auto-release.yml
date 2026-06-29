@@ -5,34 +5,20 @@ name: auto-release
 # Source of truth: the `version` field in bucket/<tool>.json.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "bin/**"
-      - "Formula/**"
-      - ".github/workflows/auto-release.yml"
   workflow_dispatch:
     inputs:
       tool:
         description: "Tool name (bin/<tool>) — leave blank to scan all"
         required: false
         default: ""
+  workflow_call:
 
 permissions:
   contents: write
 
 jobs:
-  check:
-    name: Check if release needed
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: checking
-        run: echo "checking..."
-
   release:
     name: release ${{ matrix.tool }}
-    needs: [brew-test]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
