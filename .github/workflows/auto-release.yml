@@ -24,6 +24,7 @@ permissions:
 jobs:
   release:
     name: release ${{ matrix.tool }}
+    needs: [brew-test]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

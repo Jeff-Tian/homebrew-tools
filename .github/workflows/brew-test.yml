@@ -75,3 +75,49 @@ jobs:
 
       - name: brew test
         run: brew test jeff-tian/tools/git-dco
+
+  test-git-auto-commit:
+    name: git-auto-commit smoke test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: test-formula
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-latest]
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      HOMEBREW_NO_ANALYTICS: "1"
+      HOMEBREW_NO_SANDBOX_LINUX: "1"
+    steps:
+      - name: Checkout tap
+        uses: actions/checkout@v4
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Link checkout as a Homebrew tap
+        run: |
+          set -euo pipefail
+          tap_dir="$(brew --repository)/Library/Taps/jeff-tian/homebrew-tools"
+          mkdir -p "$(dirname "$tap_dir")"
+          ln -snf "$GITHUB_WORKSPACE" "$tap_dir"
+          brew tap | grep -q '^jeff-tian/tools$'
+
+      - name: brew audit
+        run: brew audit --strict --formula jeff-tian/tools/git-auto-commit
+
+      - name: Install
+        run: brew install --build-from-source --formula jeff-tian/tools/git-auto-commit
+
+      - name: Verify --version and --help
+        run: |
+          git-auto-commit --version
+          git-auto-commit --help
+
+      - name: Bash syntax check (catches unbound-variable / parse errors)
+        run: |
+          set -euo pipefail
+          bash -n "$(which git-auto-commit)"

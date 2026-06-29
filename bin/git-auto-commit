@@ -237,48 +237,6 @@ ${conventions_rule}
 - Output ONLY the commit message — no code fences, no commentary, no "Here is..." preface
 EOF
 
-if [ "$print_only" = "1" ]; then
-  printf '%s\n' "$message"
-  exit 0
-fi
-
-echo "── proposed commit ───────────────────────────────"
-printf '%s\n' "$message"
-echo "──────────────────────────────────────────────────"
-
-if [ "$dry_run" = "1" ]; then
-  echo "(dry-run — not committing)"
-  exit 0
-fi
-
-if [ "$assume_yes" = "0" ]; then
-  if [ ! -t 0 ]; then
-    echo "✗ Non-interactive shell — pass -y to commit without prompting." >&2
-    exit 1
-  fi
-  printf "Commit with this message? [Y/n/e(dit)] "
-  read -r reply </dev/tty
-  case "${reply:-y}" in
-    n|N|no|NO) echo "Aborted."; exit 1 ;;
-    e|E|edit)
-      tmp="$(mktemp -t git-auto-commit.XXXXXX)"
-      printf '%s\n' "$message" > "$tmp"
-      "${EDITOR:-vi}" "$tmp" </dev/tty >/dev/tty
-      message="$(cat "$tmp")"
-      rm -f "$tmp"
-      [ -z "${message//[[:space:]]/}" ] && { echo "✗ Empty message."; exit 1; }
-      ;;
-    *) ;;
-  esac
-fi
-
-tmp="$(mktemp -t git-auto-commit.XXXXXX)"
-printf '%s\n' "$message" > "$tmp"
-commit_args=(-F "$tmp")
-[ "$sign_off" = "1" ] && commit_args+=(-s)
-git commit "${commit_args[@]}"
-rm -f "$tmp"
-
 read -r -d '' USER_PROMPT <<EOF || true
 ${hint_line}
 
