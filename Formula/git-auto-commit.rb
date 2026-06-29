@@ -18,6 +18,13 @@ class GitAutoCommit < Formula
   depends_on "jq"
 
   def install
+    json = File.read(File.join(__dir__, "../bucket/git-auto-commit.json"))
+    v = JSON.parse(json)["version"]
+    # Inject version into the script at install time so --version works
+    # after brew install (when ../bucket/ is no longer on PATH).
+    inreplace "bin/git-auto-commit",
+              'VERSION="${GIT_AUTO_COMMIT_VERSION:-}"',
+              "VERSION=\"#{v}\""
     bin.install "bin/git-auto-commit"
   end
 

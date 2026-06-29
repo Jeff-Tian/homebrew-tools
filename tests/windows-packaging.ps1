@@ -9,17 +9,18 @@ function Get-ToolVersion {
         [string] $ToolName
     )
 
-    $scriptPath = Join-Path $repoRoot "bin/$ToolName"
-    if (-not (Test-Path $scriptPath)) {
-        throw "Missing tool script: $scriptPath"
+    $manifestPath = Join-Path $repoRoot "bucket/$ToolName.json"
+    if (-not (Test-Path $manifestPath)) {
+        throw "Missing manifest: $manifestPath"
     }
 
-    $content = Get-Content -Raw $scriptPath
-    if ($content -notmatch 'VERSION="(?<version>[^"]+)"') {
-        throw "Could not find VERSION in $scriptPath"
+    $manifest = Get-Content -Raw $manifestPath | ConvertFrom-Json
+    $version = $manifest.version
+    if (-not $version) {
+        throw "Could not find .version in $manifestPath"
     }
 
-    return $Matches.version
+    return $version
 }
 
 function Assert-Wrapper {

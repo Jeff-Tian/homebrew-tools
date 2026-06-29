@@ -51,17 +51,16 @@
 
 set -euo pipefail
 
-# Resolve the script's directory to find the JSON manifest
-_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_JSON_PATH="$_SCRIPT_DIR/../bucket/git-auto-commit.json"
-
-# Read VERSION from the canonical JSON manifest
-if [ -f "$_JSON_PATH" ]; then
-  VERSION="$(jq -r '.version' "$_JSON_PATH")"
-else
-  # Fallback for development / non-standard layouts
-  VERSION="0.2.3"
+# VERSION is injected by the Homebrew formula at install time.
+# For local development (before install), read from the JSON manifest.
+if [ -z "${GIT_AUTO_COMMIT_VERSION:-}" ]; then
+  _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  _JSON_PATH="$_SCRIPT_DIR/../bucket/git-auto-commit.json"
+  if [ -f "$_JSON_PATH" ]; then
+    GIT_AUTO_COMMIT_VERSION="$(jq -r '.version' "$_JSON_PATH")"
+  fi
 fi
+VERSION="${GIT_AUTO_COMMIT_VERSION:-}"
 
 DEFAULT_MODEL="${GIT_AUTO_COMMIT_MODEL:-openai/gpt-4o-mini}"
 API_URL="${GIT_AUTO_COMMIT_API:-https://models.github.ai/inference/chat/completions}"

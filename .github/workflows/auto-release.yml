@@ -2,7 +2,7 @@ name: auto-release
 
 # Detects a VERSION bump in any bin/<tool> on push to main and publishes
 # a matching GitHub release. Tag format: <tool>-v<version>
-# Source of truth: the `VERSION="x.y.z"` line at the top of bin/<tool>.
+# Source of truth: the `version` field in bucket/<tool>.json.
 
 on:
   push:
@@ -46,20 +46,20 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Read VERSION from bin/${{ matrix.tool }}
+      - name: Read VERSION from bucket/${{ matrix.tool }}.json
         if: steps.gate.outputs.skip != 'true'
         id: read
         run: |
           set -euo pipefail
-          script="bin/${{ matrix.tool }}"
-          if [ ! -f "$script" ]; then
-            echo "::notice::$script not found, skipping"
+          json="bucket/${{ matrix.tool }}.json"
+          if [ ! -f "$json" ]; then
+            echo "::notice::$json not found, skipping"
             echo "version=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          version="$(grep -E '^VERSION="[^"]+"' "$script" | head -1 | sed -E 's/^VERSION="([^"]+)"/\1/')"
-          if [ -z "$version" ]; then
-            echo "::error::No VERSION=\"x.y.z\" line found in $script"
+          version="$(jq -r '.version' "$json")"
+          if [ -z "$version" ] || [ "$version" = "null" ]; then
+            echo "::error::No .version field found in $json"
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -70,21 +70,20 @@ jobs:
         run: |
           set -euo pipefail
           formula="Formula/${{ matrix.tool }}.rb"
+          json="bucket/${{ matrix.tool }}.json"
+          script_version='${{ steps.read.outputs.version }}'
           if [ ! -f "$formula" ]; then
             echo "::warning::$formula missing — skipping formula check"
             exit 0
           fi
-          formula_version="$(grep -E '^\s*version\s+"[^"]+"' "$formula" | head -1 | sed -E 's/^\s*version\s+"([^"]+)".*$/\1/')"
-          script_version='${{ steps.read.outputs.version }}'
-          if [ -z "$formula_version" ]; then
-            echo "::warning::No version line in $formula — skipping check"
-            exit 0
-          fi
-          if [ "$formula_version" != "$script_version" ]; then
-            echo "::error::Version mismatch: bin says $script_version, formula says $formula_version. Bump both before releasing."
+          # Formula now reads version from JSON via def version, so we just
+          # verify the JSON version matches what we already extracted.
+          json_version="$(jq -r '.version' "$json")"
+          if [ "$json_version" != "$script_version" ]; then
+            echo "::error::Version mismatch: JSON says $json_version, read step says $script_version"
             exit 1
           fi
-          echo "Formula version $formula_version matches script."
+          echo "Formula reads version $json_version from JSON — consistent."
 
       - name: Check tag does not already exist
         if: steps.read.outputs.version != ''
