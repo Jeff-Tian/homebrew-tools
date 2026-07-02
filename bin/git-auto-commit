@@ -273,15 +273,58 @@ if command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
 fi
 [ -n "$github_user" ] && printf '👤 GitHub: %s\n' "$github_user"
 
-response="$(curl -sS -X POST "$API_URL" \
+resp_headers="$(mktemp -t git-auto-commit.headers.XXXXXX)"
+resp_body="$(mktemp -t git-auto-commit.body.XXXXXX)"
+cleanup_resp_files() {
+  rm -f "$resp_headers" "$resp_body"
+}
+
+curl -sS -X POST "$API_URL" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json" \
-  --data-binary "$payload")"
+  --data-binary "$payload" \
+  -D "$resp_headers" \
+  -o "$resp_body"
+
+http_code="$(awk 'toupper($1) ~ /^HTTP\// { code=$2 } END { print code }' "$resp_headers")"
+content_type="$(awk -F': ' 'tolower($1)=="content-type" { gsub(/\r/, "", $2); ct=$2 } END { print ct }' "$resp_headers" | tr '[:upper:]' '[:lower:]')"
+response="$(cat "$resp_body")"
+
+if [ -z "$http_code" ] || [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+  echo "✗ Models API request failed (HTTP ${http_code:-unknown})." >&2
+  echo "  endpoint: $API_URL" >&2
+  echo "  content-type: ${content_type:-unknown}" >&2
+  echo "--- response preview ---" >&2
+  head -40 "$resp_body" >&2 || true
+  cleanup_resp_files
+  exit 1
+fi
+
+if ! printf '%s' "$content_type" | grep -q 'application/json'; then
+  echo "✗ Models API returned non-JSON content; cannot parse with jq." >&2
+  echo "  endpoint: $API_URL" >&2
+  echo "  content-type: ${content_type:-unknown}" >&2
+  echo "--- response preview ---" >&2
+  head -40 "$resp_body" >&2 || true
+  cleanup_resp_files
+  exit 1
+fi
+
+if ! printf '%s' "$response" | jq -e . >/dev/null 2>&1; then
+  echo "✗ Models API returned malformed JSON; cannot parse response." >&2
+  echo "  endpoint: $API_URL" >&2
+  echo "--- response preview ---" >&2
+  head -40 "$resp_body" >&2 || true
+  cleanup_resp_files
+  exit 1
+fi
 
 message="$(printf '%s' "$response" | jq -r '.choices[0].message.content // empty' | \
   sed -e 's/^```[a-zA-Z]*$//' -e 's/^```$//' | \
   awk 'NF || p {p=1; print}')"
+
+cleanup_resp_files
 
 # Trim trailing blank lines.
 message="$(printf '%s\n' "$message" | awk '
