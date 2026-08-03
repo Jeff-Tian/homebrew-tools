@@ -142,7 +142,7 @@ function Assert-Installer {
 
 Assert-Wrapper 'git-auto-commit'
 Assert-Wrapper 'git-dco'
-Assert-Manifest 'git-auto-commit' @('git', 'curl', 'jq')
+Assert-Manifest 'git-auto-commit' @('git')
 Assert-Manifest 'git-dco' @('git')
 Assert-Installer
 

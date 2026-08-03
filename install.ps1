@@ -25,7 +25,7 @@ function Install-RequiredDependencies {
         Invoke-RestMethod -Uri 'https://get.scoop.sh' | Invoke-Expression
     }
 
-    $packages = @('git', 'jq', 'curl')
+    $packages = @('git')
     foreach ($package in $packages) {
         Write-Host "Ensuring Scoop package is installed: $package"
         scoop install $package | Out-Host
@@ -34,7 +34,7 @@ function Install-RequiredDependencies {
 
 function Assert-Dependencies {
     $missing = @()
-    foreach ($command in @('git', 'bash', 'jq', 'curl')) {
+    foreach ($command in @('git', 'bash')) {
         if (-not (Test-CommandAvailable $command)) {
             $missing += $command
         }
@@ -42,7 +42,7 @@ function Assert-Dependencies {
 
     if ($missing.Count -gt 0) {
         $missingList = $missing -join ', '
-        throw "Missing required command(s): $missingList. Re-run with -InstallDependencies or install them with: scoop install git jq curl"
+        throw "Missing required command(s): $missingList. Re-run with -InstallDependencies or install them with: scoop install git"
     }
 }
 

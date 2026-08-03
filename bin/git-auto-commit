@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # git-auto-commit — generate a Conventional / Angular-style commit message
-# from staged changes using GitHub Models, then commit.
+# from staged changes using GitHub Copilot CLI, then commit.
 #
 # Convention scanning:
 #   Before calling the model, the script scans the repo root for local commit
@@ -24,7 +24,7 @@
 #   git auto-commit --scope=ui            # hint the scope (comma-separated ok)
 #   git auto-commit --ticket=ABC-123      # force a ticket id into scope
 #   git auto-commit --no-ticket           # do NOT auto-add a ticket id
-#   git auto-commit --model=openai/gpt-4o-mini
+#   git auto-commit --model=auto
 #   git auto-commit --dry-run             # print message, do not commit
 #   git auto-commit --print               # just print to stdout (no commit, no prompt)
 #   git auto-commit --no-body             # subject only
@@ -44,10 +44,9 @@
 #   Pass --no-sign-off to disable.
 #
 # Auth:
-#   Uses $GITHUB_TOKEN if set, otherwise falls back to `gh auth token`.
-#   The token needs `models:read` (default on personal tokens).
+#   Uses the GitHub Copilot CLI's existing login. Run `copilot login` if needed.
 #
-# Requirements: git, curl, jq. Optional: gh (for token fallback).
+# Requirements: git, GitHub Copilot CLI.
 
 set -euo pipefail
 
@@ -57,13 +56,12 @@ if [ -z "${GIT_AUTO_COMMIT_VERSION:-}" ]; then
   _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   _JSON_PATH="$_SCRIPT_DIR/../bucket/git-auto-commit.json"
   if [ -f "$_JSON_PATH" ]; then
-    GIT_AUTO_COMMIT_VERSION="$(jq -r '.version' "$_JSON_PATH")"
+    GIT_AUTO_COMMIT_VERSION="$(sed -nE 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$_JSON_PATH" | head -1)"
   fi
 fi
 VERSION="${GIT_AUTO_COMMIT_VERSION:-}"
 
-DEFAULT_MODEL="${GIT_AUTO_COMMIT_MODEL:-openai/gpt-4o-mini}"
-API_URL="${GIT_AUTO_COMMIT_API:-https://models.github.ai/inference/chat/completions}"
+DEFAULT_MODEL="${GIT_AUTO_COMMIT_MODEL:-auto}"
 MAX_DIFF_CHARS="${GIT_AUTO_COMMIT_MAX_DIFF:-12000}"
 TICKET_PATTERN="${GIT_AUTO_COMMIT_TICKET_PATTERN:-[A-Z][A-Z0-9]+-[0-9]+}"
 
@@ -102,8 +100,10 @@ for arg in "$@"; do
 done
 
 command -v git >/dev/null 2>&1 || { echo "✗ git not found" >&2; exit 127; }
-command -v curl >/dev/null 2>&1 || { echo "✗ curl not found" >&2; exit 127; }
-command -v jq >/dev/null 2>&1 || { echo "✗ jq not found (brew install jq)" >&2; exit 127; }
+command -v copilot >/dev/null 2>&1 || {
+  echo "✗ GitHub Copilot CLI not found. Install it, then run 'copilot login'." >&2
+  exit 127
+}
 
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
   echo "✗ Not inside a git repository." >&2; exit 1;
@@ -115,17 +115,6 @@ fi
 
 if git diff --cached --quiet; then
   echo "✗ Nothing staged. Use -a to stage tracked changes, or 'git add' first." >&2
-  exit 1
-fi
-
-resolve_token() {
-  if [ -n "${GITHUB_TOKEN:-}" ]; then printf '%s' "$GITHUB_TOKEN"; return; fi
-  if command -v gh >/dev/null 2>&1; then gh auth token 2>/dev/null || true; fi
-}
-
-TOKEN="$(resolve_token)"
-if [ -z "$TOKEN" ]; then
-  echo "✗ No token. Set GITHUB_TOKEN or run 'gh auth login'." >&2
   exit 1
 fi
 
@@ -252,79 +241,25 @@ Staged diff:
 ${diff_body}
 EOF
 
-payload="$(jq -n \
-  --arg model "$model" \
-  --arg sys "$SYSTEM_PROMPT" \
-  --arg usr "$USER_PROMPT" \
-  '{model: $model, temperature: 0.2,
-    messages: [{role:"system", content:$sys}, {role:"user", content:$usr}]}')"
+printf '🤖 Using model: %s\n' "$model" >&2
 
-printf '🤖 Using model: %s\n' "$model"
+copilot_error="$(mktemp -t git-auto-commit.copilot.XXXXXX)"
+trap 'rm -f "$copilot_error"' EXIT
+prompt="${SYSTEM_PROMPT}
 
-# Fetch current GitHub user info from the token.
-github_user=""
-if command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
-  user_resp="$(curl -sS -w '\n%{http_code}' -H "Authorization: token $TOKEN" \
-    "https://api.github.com/user" 2>/dev/null || true)"
-  user_http="$(printf '%s\n' "$user_resp" | tail -1)"
-  if [ "$user_http" = "200" ]; then
-    github_user="$(printf '%s\n' "$user_resp" | sed '$d' | jq -r '.login // empty' 2>/dev/null || true)"
-  fi
-fi
-[ -n "$github_user" ] && printf '👤 GitHub: %s\n' "$github_user"
-
-resp_headers="$(mktemp -t git-auto-commit.headers.XXXXXX)"
-resp_body="$(mktemp -t git-auto-commit.body.XXXXXX)"
-cleanup_resp_files() {
-  rm -f "$resp_headers" "$resp_body"
-}
-
-curl -sS -X POST "$API_URL" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json" \
-  --data-binary "$payload" \
-  -D "$resp_headers" \
-  -o "$resp_body"
-
-http_code="$(awk 'toupper($1) ~ /^HTTP\// { code=$2 } END { print code }' "$resp_headers")"
-content_type="$(awk -F': ' 'tolower($1)=="content-type" { gsub(/\r/, "", $2); ct=$2 } END { print ct }' "$resp_headers" | tr '[:upper:]' '[:lower:]')"
-response="$(cat "$resp_body")"
-
-if [ -z "$http_code" ] || [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
-  echo "✗ Models API request failed (HTTP ${http_code:-unknown})." >&2
-  echo "  endpoint: $API_URL" >&2
-  echo "  content-type: ${content_type:-unknown}" >&2
-  echo "--- response preview ---" >&2
-  head -40 "$resp_body" >&2 || true
-  cleanup_resp_files
+${USER_PROMPT}"
+if ! message="$(env -u GITHUB_TOKEN -u GH_TOKEN \
+  copilot --no-color --no-custom-instructions --disable-builtin-mcps \
+    --available-tools='' --no-ask-user --stream=off --silent \
+    --model="$model" --prompt "$prompt" 2>"$copilot_error")"; then
+  echo "✗ Copilot CLI could not generate a commit message." >&2
+  head -40 "$copilot_error" >&2 || true
+  echo "  For authentication failures, run 'copilot login' and try again." >&2
   exit 1
 fi
 
-if ! printf '%s' "$content_type" | grep -q 'application/json'; then
-  echo "✗ Models API returned non-JSON content; cannot parse with jq." >&2
-  echo "  endpoint: $API_URL" >&2
-  echo "  content-type: ${content_type:-unknown}" >&2
-  echo "--- response preview ---" >&2
-  head -40 "$resp_body" >&2 || true
-  cleanup_resp_files
-  exit 1
-fi
-
-if ! printf '%s' "$response" | jq -e . >/dev/null 2>&1; then
-  echo "✗ Models API returned malformed JSON; cannot parse response." >&2
-  echo "  endpoint: $API_URL" >&2
-  echo "--- response preview ---" >&2
-  head -40 "$resp_body" >&2 || true
-  cleanup_resp_files
-  exit 1
-fi
-
-message="$(printf '%s' "$response" | jq -r '.choices[0].message.content // empty' | \
-  sed -e 's/^```[a-zA-Z]*$//' -e 's/^```$//' | \
+message="$(printf '%s' "$message" | sed -e 's/^```[a-zA-Z]*$//' -e 's/^```$//' | \
   awk 'NF || p {p=1; print}')"
-
-cleanup_resp_files
 
 # Trim trailing blank lines.
 message="$(printf '%s\n' "$message" | awk '

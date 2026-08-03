@@ -59,16 +59,15 @@ git dco --version
 git dco init
 ```
 
-`git-auto-commit` can read `$env:GITHUB_TOKEN`; if it is not set, install and
-authenticate GitHub CLI (`scoop install gh`, then `gh auth login`) for token
-fallback.
+`git-auto-commit` uses GitHub Copilot CLI authentication. Install Copilot CLI
+and run `copilot login` once before generating a commit message.
 
 ## Tools
 
 ### `git-auto-commit`
 
 Generate a Conventional / Angular-style commit message from the staged diff
-using the GitHub Models API, then commit. Inspired by the `auto-releasenotes`
+using GitHub Copilot CLI, then commit. Inspired by the `auto-releasenotes`
 target in [`SimpleMultiApp`](https://github.com/Jeff-Tian/SimpleMultiApp).
 
 ```sh
@@ -93,9 +92,9 @@ git auto-commit --dry-run
 git auto-commit --print          # message to stdout (CI-friendly)
 ```
 
-Requires `git`, `curl`, `jq`, and a GitHub token with `models:read`. Reads
-`$GITHUB_TOKEN`, falling back to `gh auth token`. The model output language
-follows your recent commit history (中文 commits → 中文 message).
+Requires `git` and [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli).
+Authenticate it once with `copilot login`. The model output language follows
+your recent commit history (中文 commits → 中文 message).
 
 #### Scope & ticket auto-detection
 
@@ -128,8 +127,7 @@ Environment overrides:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `GIT_AUTO_COMMIT_MODEL` | `openai/gpt-4o-mini` | Model id passed to GitHub Models |
-| `GIT_AUTO_COMMIT_API`   | `https://models.github.ai/inference/chat/completions` | Endpoint override |
+| `GIT_AUTO_COMMIT_MODEL` | `auto` | Model passed to GitHub Copilot CLI |
 | `GIT_AUTO_COMMIT_MAX_DIFF` | `12000` | Truncate the staged diff at N chars before sending |
 | `GIT_AUTO_COMMIT_TICKET_PATTERN` | `[A-Z][A-Z0-9]+-[0-9]+` | Regex for ticket id detection |
 

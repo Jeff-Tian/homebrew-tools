@@ -1,12 +1,10 @@
 {
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Generate Conventional/Angular commit messages from staged diff via AI",
   "homepage": "https://github.com/Jeff-Tian/homebrew-tools",
   "license": "MIT",
   "depends": [
-    "git",
-    "curl",
-    "jq"
+    "git"
   ],
   "url": [
     "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit#/git-auto-commit",
@@ -23,7 +21,7 @@
     ]
   ],
   "suggest": {
-    "GitHub CLI token fallback": "gh"
+    "GitHub Copilot CLI": "copilot"
   },
   "checkver": {
     "url": "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit",

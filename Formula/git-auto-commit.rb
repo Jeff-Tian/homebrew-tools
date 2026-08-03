@@ -4,13 +4,11 @@ class GitAutoCommit < Formula
   url "https://github.com/Jeff-Tian/homebrew-tools.git",
       branch: "main",
       using:  :git
-  version "0.2.5"
+  version "0.2.6"
   license "MIT"
   head "https://github.com/Jeff-Tian/homebrew-tools.git", branch: "main"
 
-  depends_on "curl"
   depends_on "git"
-  depends_on "jq"
 
   def install
     json = File.read(File.join(__dir__, "../bucket/git-auto-commit.json"))
@@ -27,8 +25,7 @@ class GitAutoCommit < Formula
     assert_match "git-auto-commit #{version}",
                  shell_output("#{bin}/git-auto-commit --version")
 
-    # Outside a git repo it should fail cleanly (note: no token needed to reach that check).
-    ENV["GITHUB_TOKEN"] = "dummy"
+    # Outside a git repo it should fail cleanly before invoking Copilot CLI.
     output = shell_output("#{bin}/git-auto-commit --dry-run 2>&1", 1)
     assert_match(/Not inside a git repository|Nothing staged/, output)
   end
