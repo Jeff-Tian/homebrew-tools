@@ -8,7 +8,7 @@ Personal Homebrew tap for small developer-workflow tools.
 brew tap jeff-tian/tools https://github.com/Jeff-Tian/homebrew-tools
 ```
 
-Once the repo is published as `Jeff-Tian/homebrew-tools` on GitHub, the short
+Since the repo is published as `Jeff-Tian/homebrew-tools` on GitHub, the short
 form also works:
 
 ```sh
@@ -17,7 +17,7 @@ brew tap jeff-tian/tools
 
 ## Install on Windows
 
-For this private repository, use an authenticated clone and run the installer.
+Even made it a private repository, use an authenticated clone and run the installer works.
 It copies the tool scripts and Windows command wrappers into a user-level bin
 directory and updates your user `PATH`; no manual copying is required.
 
@@ -37,7 +37,7 @@ if (Test-Path $repo) {
 & "$repo\install.ps1" -InstallDependencies
 ```
 
-If the repository is made public later, it can also be installed as a Scoop
+If the repository is made public, it can also be installed as a Scoop
 bucket:
 
 ```powershell
