@@ -34,9 +34,9 @@
 # Scope rules:
 #   The generated subject is `<type>(<scope>): <subject>` where <scope> is a
 #   comma-space separated list. A ticket id (default pattern: [A-Z][A-Z0-9]+-\d+)
-#   detected from the branch name (e.g. feature/CNCRM-8729-foo) or recent
+#   detected from the branch name (e.g. feature/ABC-123-some-desc) or recent
 #   commit messages is auto-prepended as the first scope, followed by any
-#   model-inferred or user-hinted scopes. e.g. feat(CNCRM-8729, auth, ui): ...
+#   model-inferred or user-hinted scopes. e.g. feat(ABC-123, auth, ui): ...
 #
 # DCO:
 #   By default the final commit is created with `git commit -s`, appending a

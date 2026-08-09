@@ -99,18 +99,18 @@ your recent commit history (中文 commits → 中文 message).
 #### Scope & ticket auto-detection
 
 The subject is `<type>(<scope>): <subject>` where `<scope>` is a comma-space
-separated list. A ticket id matching `[A-Z][A-Z0-9]+-\d+` (e.g. `CNCRM-8729`,
-`ABC-123`) is detected from, in priority order:
+separated list. A ticket id matching `[A-Z][A-Z0-9]+-\d+` (e.g. `ABC-123`)
+is detected from, in priority order:
 
 1. `--ticket=…` flag
-2. The current branch name — `feature/CNCRM-8729-jenkins` → `CNCRM-8729`
+2. The current branch name — `feature/ABC-123-some-desc` → `ABC-123`
 3. Recent commit messages
 
 The ticket becomes the first item in the scope, followed by any `--scope=`
 extras and 1-2 scopes the model infers from the diff. Example:
 
 ```
-feat(CNCRM-8729, auth, ui): add OAuth login screen
+feat(ABC-123, auth, ui): add OAuth login screen
 ```
 
 Pass `--no-ticket` to disable, or set `GIT_AUTO_COMMIT_TICKET_PATTERN` to a
