@@ -24,7 +24,7 @@
 #   git auto-commit --scope=ui            # hint the scope (comma-separated ok)
 #   git auto-commit --ticket=ABC-123      # force a ticket id into scope
 #   git auto-commit --no-ticket           # do NOT auto-add a ticket id
-#   git auto-commit --model=auto
+#   git auto-commit --model=gpt-5.4-mini
 #   git auto-commit --dry-run             # print message, do not commit
 #   git auto-commit --print               # just print to stdout (no commit, no prompt)
 #   git auto-commit --no-body             # subject only
@@ -61,7 +61,9 @@ if [ -z "${GIT_AUTO_COMMIT_VERSION:-}" ]; then
 fi
 VERSION="${GIT_AUTO_COMMIT_VERSION:-}"
 
-DEFAULT_MODEL="${GIT_AUTO_COMMIT_MODEL:-auto}"
+# Default to the fastest model we measured end-to-end (gemini-3.5-flash ≈ 25s,
+# vs ≈ 45s for `auto`). Override with GIT_AUTO_COMMIT_MODEL or --model=...
+DEFAULT_MODEL="${GIT_AUTO_COMMIT_MODEL:-gemini-3.5-flash}"
 MAX_DIFF_CHARS="${GIT_AUTO_COMMIT_MAX_DIFF:-12000}"
 TICKET_PATTERN="${GIT_AUTO_COMMIT_TICKET_PATTERN:-[A-Z][A-Z0-9]+-[0-9]+}"
 

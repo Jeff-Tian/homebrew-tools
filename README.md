@@ -127,7 +127,7 @@ Environment overrides:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `GIT_AUTO_COMMIT_MODEL` | `auto` | Model passed to GitHub Copilot CLI |
+| `GIT_AUTO_COMMIT_MODEL` | `gemini-3.5-flash` | Model passed to GitHub Copilot CLI (default chosen for lowest end-to-end latency) |
 | `GIT_AUTO_COMMIT_MAX_DIFF` | `12000` | Truncate the staged diff at N chars before sending |
 | `GIT_AUTO_COMMIT_TICKET_PATTERN` | `[A-Z][A-Z0-9]+-[0-9]+` | Regex for ticket id detection |
 
