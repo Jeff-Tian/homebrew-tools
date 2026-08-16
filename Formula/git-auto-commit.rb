@@ -19,7 +19,9 @@ class GitAutoCommit < Formula
               'VERSION="${GIT_AUTO_COMMIT_VERSION:-}"',
               "VERSION=\"#{v}\""
     bin.install "bin/git-auto-commit"
-    bin.install "bin/gitmojis.txt"
+    if File.exist?("bin/gitmojis.txt")
+      bin.install "bin/gitmojis.txt"
+    end
   end
 
   test do
