@@ -86,6 +86,7 @@ git auto-commit --scope="auth, ui"          # multiple extra scopes
 git auto-commit --ticket=ABC-123            # force a specific ticket id
 git auto-commit --no-ticket                 # opt out of ticket auto-prepend
 git auto-commit --no-sign-off               # opt out of DCO Signed-off-by trailer
+git auto-commit --no-gitmoji                # opt out of gitmoji emoji prefix
 
 # Preview only:
 git auto-commit --dry-run
@@ -98,7 +99,7 @@ your recent commit history (中文 commits → 中文 message).
 
 #### Scope & ticket auto-detection
 
-The subject is `<type>(<scope>): <subject>` where `<scope>` is a comma-space
+The subject is `<emoji> <type>(<scope>): <subject>` where `<scope>` is a comma-space
 separated list. A ticket id matching `[A-Z][A-Z0-9]+-\d+` (e.g. `ABC-123`)
 is detected from, in priority order:
 
@@ -110,11 +111,40 @@ The ticket becomes the first item in the scope, followed by any `--scope=`
 extras and 1-2 scopes the model infers from the diff. Example:
 
 ```
-feat(ABC-123, auth, ui): add OAuth login screen
+✨ feat(ABC-123, auth, ui): add OAuth login screen
 ```
 
 Pass `--no-ticket` to disable, or set `GIT_AUTO_COMMIT_TICKET_PATTERN` to a
 custom regex (e.g. for `#1234` or `JIRA_1234`-style ids).
+
+#### Gitmoji
+
+By default `git auto-commit` prepends a [gitmoji](https://github.com/carloscuesta/gitmoji)
+emoji to the commit message, chosen by the commit type:
+
+```
+✨ feat(auth): add OAuth login
+🐛 fix(api): handle null response
+📝 docs(readme): update install guide
+```
+
+The emoji mapping is bundled with the tool (in `bin/gitmojis.txt`).
+Installations receive the bundled mapping; pass `--no-gitmoji` to disable
+the emoji prefix and get plain Conventional Commits:
+
+```
+feat(auth): add OAuth login
+```
+
+To refresh the gitmoji mapping manually (e.g. after upstream adds new emojis):
+
+```sh
+./scripts/update-gitmoji.sh
+```
+
+The script fetches the latest data from
+[`carloscuesta/gitmoji`](https://raw.githubusercontent.com/carloscuesta/gitmoji/master/packages/gitmojis/src/gitmojis.json)
+and regenerates `bin/gitmojis.txt`.
 
 #### DCO sign-off
 
