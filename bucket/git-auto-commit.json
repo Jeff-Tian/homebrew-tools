@@ -1,6 +1,6 @@
 {
-  "version": "0.2.7",
-  "description": "Generate Conventional/Angular commit messages from staged diff via AI",
+  "version": "0.2.8",
+  "description": "Generate Conventional/Angular commit messages with gitmoji emoji from staged diff via AI",
   "homepage": "https://github.com/Jeff-Tian/homebrew-tools",
   "license": "MIT",
   "depends": [
@@ -8,9 +8,11 @@
   ],
   "url": [
     "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit#/git-auto-commit",
-    "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit.cmd#/git-auto-commit.cmd"
+    "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit.cmd#/git-auto-commit.cmd",
+    "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/gitmojis.txt#/gitmojis.txt"
   ],
   "hash": [
+    "skip",
     "skip",
     "skip"
   ],
@@ -30,9 +32,11 @@
   "autoupdate": {
     "url": [
       "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit#/git-auto-commit",
-      "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit.cmd#/git-auto-commit.cmd"
+      "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit.cmd#/git-auto-commit.cmd",
+      "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/gitmojis.txt#/gitmojis.txt"
     ],
     "hash": [
+      "skip",
       "skip",
       "skip"
     ]

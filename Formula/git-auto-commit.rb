@@ -1,10 +1,10 @@
 class GitAutoCommit < Formula
-  desc "Generate Conventional/Angular commit messages from staged diff via AI"
+  desc "Generate Conventional/Angular commit messages with gitmoji emoji from staged diff via AI"
   homepage "https://github.com/Jeff-Tian/homebrew-tools"
   url "https://github.com/Jeff-Tian/homebrew-tools.git",
       branch: "main",
       using:  :git
-  version "0.2.7"
+  version "0.2.8"
   license "MIT"
   head "https://github.com/Jeff-Tian/homebrew-tools.git", branch: "main"
 
@@ -19,6 +19,7 @@ class GitAutoCommit < Formula
               'VERSION="${GIT_AUTO_COMMIT_VERSION:-}"',
               "VERSION=\"#{v}\""
     bin.install "bin/git-auto-commit"
+    bin.install "bin/gitmojis.txt"
   end
 
   test do
