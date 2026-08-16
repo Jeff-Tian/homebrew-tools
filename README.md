@@ -59,8 +59,13 @@ git dco --version
 git dco init
 ```
 
-`git-auto-commit` uses GitHub Copilot CLI authentication. Install Copilot CLI
-and run `copilot login` once before generating a commit message.
+`git-auto-commit` supports two AI backends:
+
+- **copilot** (default) — GitHub Copilot CLI. Install it and run `copilot login` once.
+- **brickverse** — [Brickverse](https://pub.brickverse.net) model-proxy (Cloudflare Workers AI).
+  First run opens a browser for Cloudflare Access login and caches the cookie at
+  `~/.cache/brickverse/cf_authorization`. Significantly faster than Copilot CLI
+  (~2-5s vs ~25-45s per call).
 
 ## Tools
 
@@ -87,14 +92,21 @@ git auto-commit --ticket=ABC-123            # force a specific ticket id
 git auto-commit --no-ticket                 # opt out of ticket auto-prepend
 git auto-commit --no-sign-off               # opt out of DCO Signed-off-by trailer
 
+# Switch AI backend:
+git auto-commit --backend=brickverse        # use Cloudflare Workers AI (fast)
+git auto-commit --backend=copilot           # use GitHub Copilot CLI (default)
+
 # Preview only:
 git auto-commit --dry-run
 git auto-commit --print          # message to stdout (CI-friendly)
 ```
 
-Requires `git` and [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli).
-Authenticate it once with `copilot login`. The model output language follows
-your recent commit history (中文 commits → 中文 message).
+Requirements depend on the backend:
+
+- `copilot` backend: `git` + [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli). Authenticate once with `copilot login`.
+- `brickverse` backend: `git` + `ruby` (preinstalled on macOS). First run opens a browser to complete Cloudflare Access login.
+
+The model output language follows your recent commit history (中文 commits → 中文 message).
 
 #### Scope & ticket auto-detection
 
@@ -127,9 +139,12 @@ Environment overrides:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `GIT_AUTO_COMMIT_MODEL` | `gemini-3.5-flash` | Model passed to GitHub Copilot CLI (default chosen for lowest end-to-end latency) |
-| `GIT_AUTO_COMMIT_MAX_DIFF` | `12000` | Truncate the staged diff at N chars before sending |
+| `GIT_AUTO_COMMIT_BACKEND` | `copilot` | AI backend: `copilot` (Copilot CLI) or `brickverse` (Cloudflare Workers AI) |
+| `GIT_AUTO_COMMIT_MODEL` | `gemini-3.5-flash` (copilot)<br>`gpt-oss-120b` (brickverse) | Model name passed to the selected backend |
+| `GIT_AUTO_COMMIT_MAX_DIFF` | `12000` (copilot) / `6000` (brickverse) | Truncate the staged diff at N chars before sending. The brickverse default is lower because gpt-oss-120b silently returns an empty completion when the total prompt exceeds ~12–13 KB. |
 | `GIT_AUTO_COMMIT_TICKET_PATTERN` | `[A-Z][A-Z0-9]+-[0-9]+` | Regex for ticket id detection |
+| `BRICKVERSE_HOST` | `https://pub.brickverse.net` | (brickverse backend only) Override the model-proxy origin |
+| `AI_MODEL` | `gpt-oss-120b` | (brickverse backend only) Default model if `--model` / `GIT_AUTO_COMMIT_MODEL` not set |
 
 ### `git-dco`
 
