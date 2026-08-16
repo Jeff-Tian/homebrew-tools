@@ -1,5 +1,5 @@
 class GitAutoCommit < Formula
-  desc "Generate Conventional/Angular commit messages with gitmoji emoji from staged diff via AI"
+  desc "Generate Conventional commit messages with gitmoji emoji from staged diff"
   homepage "https://github.com/Jeff-Tian/homebrew-tools"
   url "https://github.com/Jeff-Tian/homebrew-tools.git",
       branch: "main",
