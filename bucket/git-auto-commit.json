@@ -1,6 +1,6 @@
 {
   "version": "0.2.8",
-  "description": "Generate Conventional/Angular commit messages with gitmoji emoji from staged diff via AI",
+  "description": "Generate Conventional commit messages with gitmoji emoji from staged diff",
   "homepage": "https://github.com/Jeff-Tian/homebrew-tools",
   "license": "MIT",
   "depends": [

@@ -39,7 +39,7 @@ except Exception as exc:
   print(f'ERROR: {exc}', file=sys.stderr)
   sys.exit(1)
 ")"
-elif command -v curl &>/dev/null; then
+elif command -v curl &>/dev/null && command -v python3 &>/dev/null; then
   JSON="$(curl -sL "$GITMOJI_JSON_URL" | python3 -c "
 import json, sys
 data = json.load(sys.stdin)

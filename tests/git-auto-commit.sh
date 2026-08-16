@@ -54,7 +54,10 @@ output_no_gitmoji="$(cd "$sandbox/repo" && PATH="$sandbox/bin:$PATH" COPILOT_ARG
 
 test "$output_no_gitmoji" = 'fix(cli): generate commit messages with copilot'
 # The prompt should NOT contain gitmoji rules when --no-gitmoji is passed.
-! grep -q 'GITMOJI' "$sandbox/copilot-args"
+if grep -q 'GITMOJI' "$sandbox/copilot-args"; then
+  printf 'FAIL: GITMOJI rules should not appear in prompt with --no-gitmoji\n' >&2
+  exit 1
+fi
 
 printf 'git-auto-commit --no-gitmoji check passed.\n'
 
@@ -70,7 +73,7 @@ output_gitmoji="$(cd "$sandbox/repo" && PATH="$sandbox/bin:$PATH" COPILOT_ARGS_F
 
 # Should start with an emoji (non-ASCII character) followed by the commit message
 # Use LC_ALL=C to detect non-ASCII bytes reliably across platforms.
-if printf '%s' "$output_gitmoji" | LC_ALL=C grep -q '[^[:print:][:space:]]' && \
+if printf '%s' "$output_gitmoji" | LC_ALL=C grep -qE '^[^[:print:][:space:]]' && \
    printf '%s' "$output_gitmoji" | grep -q 'fix(cli):'; then
   printf 'git-auto-commit gitmoji default check passed.\n'
 else
@@ -85,3 +88,22 @@ grep -q 'GITMOJI' "$sandbox/copilot-args" || {
 }
 
 printf 'git-auto-commit gitmoji prompt rules check passed.\n'
+
+# --- Test: non-ASCII subject without emoji still gets emoji prepended ---
+cat > "$sandbox/bin/copilot" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$COPILOT_ARGS_FILE"
+printf 'fix(cli): support café menu\n'
+EOF
+chmod +x "$sandbox/bin/copilot"
+
+output_non_ascii="$(cd "$sandbox/repo" && PATH="$sandbox/bin:$PATH" COPILOT_ARGS_FILE="$sandbox/copilot-args" "$repo_root/bin/git-auto-commit" --print)"
+
+# Should start with an emoji even though the subject contains non-ASCII (café)
+if printf '%s' "$output_non_ascii" | LC_ALL=C grep -qE '^[^[:print:][:space:]]' && \
+   printf '%s' "$output_non_ascii" | grep -q 'fix(cli):'; then
+  printf 'git-auto-commit non-ASCII subject check passed.\n'
+else
+  printf 'FAIL: expected emoji prefix for non-ASCII subject, got: %s\n' "$output_non_ascii" >&2
+  exit 1
+fi

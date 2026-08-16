@@ -315,6 +315,16 @@ fi
 message="$(printf '%s' "$message" | sed -e 's/^```[a-zA-Z]*$//' -e 's/^```$//' | \
   awk 'NF || p {p=1; print}')"
 
+# Strip any preamble the model may have emitted before the actual commit
+# message (e.g. "I will examine..." or "Here is the commit message:").
+# The real subject line matches the Conventional Commit pattern, optionally
+# prefixed by a gitmoji emoji (non-ASCII bytes + space).
+# [^ -~] matches any byte outside printable ASCII (space..tilde), catching emoji.
+message="$(printf '%s\n' "$message" | awk '
+  !found && (/^[a-z]+(\(|:)/ || /^[^ -~]+ [a-z]+(\(|:)/) { found=1 }
+  found { print }
+')"
+
 # Trim trailing blank lines.
 message="$(printf '%s\n' "$message" | awk '
   { lines[NR]=$0 }
@@ -359,7 +369,7 @@ if [ "$use_gitmoji" = "1" ] && [ -n "$_GITMOJI_FILE" ] && [ -f "$_GITMOJI_FILE" 
       if [ -n "$_emoji_entry" ]; then
         _emoji="$(printf '%s' "$_emoji_entry" | cut -d'|' -f1)"
         # Only prepend if the first line doesn't already start with a non-ASCII emoji.
-        if ! printf '%s' "$_first_line" | LC_ALL=C grep -q '[^[:print:][:space:]]'; then
+        if ! printf '%s' "$_first_line" | LC_ALL=C grep -qE '^[^[:print:][:space:]]'; then
           message="$(printf '%s\n' "$message" | sed "1s/^/${_emoji} /")"
         fi
       fi

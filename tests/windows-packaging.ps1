@@ -84,7 +84,7 @@ function Assert-Manifest {
     }
 
     $urls = @($manifest.url)
-    foreach ($fileName in @($ToolName, "$ToolName.cmd")) {
+    foreach ($fileName in @($ToolName, "$ToolName.cmd", "gitmojis.txt")) {
         $expectedUrl = "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/$fileName#/$fileName"
         if ($urls -notcontains $expectedUrl) {
             throw "$manifestPath should download $expectedUrl"
@@ -93,8 +93,8 @@ function Assert-Manifest {
 
     $hashes = @($manifest.hash)
     $nonSkipHashes = @($hashes | Where-Object { $_ -ne 'skip' })
-    if ($hashes.Count -ne 2 -or $nonSkipHashes.Count -ne 0) {
-        throw "$manifestPath should use two 'skip' hashes for branch-based raw URLs"
+    if ($hashes.Count -ne 3 -or $nonSkipHashes.Count -ne 0) {
+        throw "$manifestPath should use three 'skip' hashes for branch-based raw URLs"
     }
 
     $binEntries = @($manifest.bin)
