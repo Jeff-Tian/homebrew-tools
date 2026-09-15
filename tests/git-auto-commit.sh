@@ -107,3 +107,45 @@ else
   printf 'FAIL: expected emoji prefix for non-ASCII subject, got: %s\n' "$output_non_ascii" >&2
   exit 1
 fi
+
+cat > "$sandbox/bin/copilot" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$COPILOT_ARGS_FILE"
+printf '%s\n' "${COPILOT_MESSAGE:-fix(cli): generate commit messages with copilot}"
+EOF
+
+check_ticket() {
+  local expected="$1"
+  shift
+  local actual
+  actual="$(cd "$sandbox/repo" && PATH="$sandbox/bin:$PATH" COPILOT_ARGS_FILE="$sandbox/copilot-args" "$repo_root/bin/git-auto-commit" --print --no-gitmoji "$@")"
+  if [ "$actual" != "$expected" ]; then
+    printf 'FAIL: expected <%s>, got <%s>\n' "$expected" "$actual" >&2
+    exit 1
+  fi
+}
+
+git -C "$sandbox/repo" checkout -qb 'feature/#1988-fix'
+check_ticket 'fix(#1988, cli): generate commit messages with copilot'
+grep -qF 'ticket=#1988' "$sandbox/copilot-args"
+COPILOT_MESSAGE='fix(#1988, cli): generate commit messages with copilot' \
+  check_ticket 'fix(#1988, cli): generate commit messages with copilot'
+check_ticket 'fix(ABC-123, cli): generate commit messages with copilot' --ticket=ABC-123
+check_ticket 'fix(cli): generate commit messages with copilot' --no-ticket
+COPILOT_MESSAGE='fix(#1988, cli): generate commit messages with copilot' \
+  check_ticket 'fix(cli): generate commit messages with copilot' --no-ticket
+GIT_AUTO_COMMIT_TICKET_PATTERN='JIRA_[0-9]+' \
+  check_ticket 'fix(cli): generate commit messages with copilot'
+
+git -C "$sandbox/repo" checkout -qb ticket-history
+git -C "$sandbox/repo" -c commit.gpgsign=false commit --allow-empty --only -qm 'fix: resolve #1988'
+check_ticket 'fix(#1988, cli): generate commit messages with copilot'
+git -C "$sandbox/repo" checkout -qb feature/ABC-123-fix
+check_ticket 'fix(ABC-123, cli): generate commit messages with copilot'
+git -C "$sandbox/repo" checkout -qb feature/JIRA_1234-fix
+GIT_AUTO_COMMIT_TICKET_PATTERN='JIRA_[0-9]+' \
+  check_ticket 'fix(JIRA_1234, cli): generate commit messages with copilot'
+COPILOT_MESSAGE='fix(ABC-123-extra, renderer#1988): preserve non-ticket scopes' \
+  check_ticket 'fix(ABC-123-extra, renderer#1988): preserve non-ticket scopes' --no-ticket
+
+printf 'git-auto-commit ticket detection checks passed.\n'

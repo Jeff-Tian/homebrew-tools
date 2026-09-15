@@ -35,7 +35,7 @@
 #
 # Scope rules:
 #   The generated subject is `<type>(<scope>): <subject>` where <scope> is a
-#   comma-space separated list. A ticket id (default pattern: [A-Z][A-Z0-9]+-\d+)
+#   comma-space separated list. A ticket id (e.g. ABC-123 or #1988)
 #   detected from the branch name (e.g. feature/ABC-123-some-desc) or recent
 #   commit messages is auto-prepended as the first scope, followed by any
 #   model-inferred or user-hinted scopes. e.g. feat(ABC-123, auth, ui): ...
@@ -67,7 +67,7 @@ VERSION="${GIT_AUTO_COMMIT_VERSION:-}"
 # vs ≈ 45s for `auto`). Override with GIT_AUTO_COMMIT_MODEL or --model=...
 DEFAULT_MODEL="${GIT_AUTO_COMMIT_MODEL:-gemini-3.5-flash}"
 MAX_DIFF_CHARS="${GIT_AUTO_COMMIT_MAX_DIFF:-12000}"
-TICKET_PATTERN="${GIT_AUTO_COMMIT_TICKET_PATTERN:-[A-Z][A-Z0-9]+-[0-9]+}"
+TICKET_PATTERN="${GIT_AUTO_COMMIT_TICKET_PATTERN:-([A-Z][A-Z0-9]+-[0-9]+|#[0-9]+)}"
 
 usage() { sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; }
 
@@ -166,7 +166,7 @@ Use imperative mood. Wrap each line at ~72 chars."
 # model from hallucinating ids like TICKET-1 / ABC-123.
 ticket_rule=""
 if [ -z "$ticket" ]; then
-  ticket_rule="- TICKET BAN: do NOT include any ticket id (e.g. ABC-123, PROJ-9999, TICKET-1, FOO-42) in the scope or anywhere in the message. No ticket was provided or detected; do not invent one."
+  ticket_rule="- TICKET BAN: do NOT include any ticket id (e.g. ABC-123, PROJ-9999, TICKET-1, FOO-42, #1988) in the scope or anywhere in the message. No ticket was provided or detected; do not invent one."
 fi
 
 # Scan the repo for commit conventions / guidelines that the model should follow.

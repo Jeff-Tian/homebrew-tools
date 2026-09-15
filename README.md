@@ -100,7 +100,8 @@ your recent commit history (中文 commits → 中文 message).
 #### Scope & ticket auto-detection
 
 The subject is `<emoji> <type>(<scope>): <subject>` where `<scope>` is a comma-space
-separated list. A ticket id matching `[A-Z][A-Z0-9]+-\d+` (e.g. `ABC-123`)
+separated list. A ticket id matching `[A-Z][A-Z0-9]+-[0-9]+` (e.g. `ABC-123`)
+or a GitHub issue reference matching `#[0-9]+` (e.g. `#1988`)
 is detected from, in priority order:
 
 1. `--ticket=…` flag
@@ -115,7 +116,8 @@ extras and 1-2 scopes the model infers from the diff. Example:
 ```
 
 Pass `--no-ticket` to disable, or set `GIT_AUTO_COMMIT_TICKET_PATTERN` to a
-custom regex (e.g. for `#1234` or `JIRA_1234`-style ids).
+custom regex (e.g. for `JIRA_1234`-style ids). GitHub issue references are
+supported by default, producing subjects such as `fix(#1988, cli): handle errors`.
 
 #### Gitmoji
 
@@ -159,7 +161,7 @@ Environment overrides:
 |---|---|---|
 | `GIT_AUTO_COMMIT_MODEL` | `gemini-3.5-flash` | Model passed to GitHub Copilot CLI (default chosen for lowest end-to-end latency) |
 | `GIT_AUTO_COMMIT_MAX_DIFF` | `12000` | Truncate the staged diff at N chars before sending |
-| `GIT_AUTO_COMMIT_TICKET_PATTERN` | `[A-Z][A-Z0-9]+-[0-9]+` | Regex for ticket id detection |
+| `GIT_AUTO_COMMIT_TICKET_PATTERN` | `([A-Z][A-Z0-9]+-[0-9]+\|#[0-9]+)` | Regex for ticket id detection |
 
 ### `git-dco`
 
@@ -200,6 +202,25 @@ brew install --HEAD --build-from-source ./Formula/git-dco.rb
 brew tap jeff-tian/tools "$(pwd)"
 brew install --HEAD jeff-tian/tools/git-dco
 ```
+
+## Running tests
+
+From the repository root, run the `git-auto-commit` tests with Bash:
+
+```bash
+bash tests/git-auto-commit.sh
+```
+
+With RTK installed, the equivalent command is:
+
+```bash
+rtk proxy bash tests/git-auto-commit.sh
+```
+
+Do not use `sh tests/git-auto-commit.sh`: explicitly invoking `sh` ignores the
+script's Bash shebang. Different shell variable-scoping behavior can leak mock
+values between test cases and cause failures. The tests use a temporary Git
+repository and a mock Copilot CLI; no Copilot login or AI requests are needed.
 
 ## Releasing a new version
 
