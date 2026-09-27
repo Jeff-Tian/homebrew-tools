@@ -131,6 +131,20 @@ jobs:
           set -euo pipefail
           bash -n "$(which git-auto-commit)"
 
+      - name: Ruby syntax check
+        run: |
+          set -euo pipefail
+          ruby -c "$GITHUB_WORKSPACE/bin/git-auto-commit-ai.rb"
+          ruby -c "$GITHUB_WORKSPACE/bin/test-brickverse-direct.rb"
+
+      - name: Offline smoke test (mocked copilot backend)
+        run: bash "$GITHUB_WORKSPACE/tests/git-auto-commit.sh"
+
+      - name: Brickverse backend live diagnostic (skips without credentials)
+        env:
+          CI: "true"
+        run: ruby "$GITHUB_WORKSPACE/bin/test-brickverse-direct.rb"
+
       - name: Trigger auto-release on success
         if: github.ref == 'refs/heads/main' && github.event_name != 'workflow_call'
         run: |

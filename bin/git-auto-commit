@@ -128,26 +128,25 @@ done
 
 # Pick a backend-appropriate default model when the user did not choose one.
 # Copilot default: lowest end-to-end latency among the CLI's available models.
-# Brickverse default: the model-proxy's general-purpose Workers AI model.
+# Brickverse default: a non-reasoning Workers AI model. Reasoning models
+# (gpt-oss-*, qwen3-*) spend tokens and wall-clock time on hidden
+# chain-of-thought before the answer; llama-3.3-70b answers directly in a
+# few dozen tokens (~2-4s) and follows the commit-message format/language
+# rules most reliably in practice. Reasoning models stay available via
+# --model for anyone who wants them.
 if [ "$USER_SET_MODEL" = "0" ]; then
   case "$BACKEND" in
-    brickverse) model="gpt-oss-120b" ;;
+    brickverse) model="llama-3.3-70b" ;;
     *)          model="gemini-3.5-flash" ;;
   esac
 fi
 
-# Per-backend diff size cap. The copilot CLI handles ~12K chars of diff fine;
-# the Brickverse gpt-oss-120b model silently returns an empty completion when
-# the total prompt (system + user) exceeds roughly 12–13K bytes, so cap the
-# diff portion more aggressively for that backend. Override with
-# GIT_AUTO_COMMIT_MAX_DIFF.
+# Diff size cap. Both backends comfortably handle ~12K chars of diff;
+# override with GIT_AUTO_COMMIT_MAX_DIFF.
 if [ -n "${GIT_AUTO_COMMIT_MAX_DIFF:-}" ]; then
   MAX_DIFF_CHARS="$GIT_AUTO_COMMIT_MAX_DIFF"
 else
-  case "$BACKEND" in
-    brickverse) MAX_DIFF_CHARS=6000 ;;
-    *)          MAX_DIFF_CHARS=12000 ;;
-  esac
+  MAX_DIFF_CHARS=12000
 fi
 
 command -v git >/dev/null 2>&1 || { echo "✗ git not found" >&2; exit 127; }
@@ -200,7 +199,7 @@ if [ "${#diff_body}" -gt "$MAX_DIFF_CHARS" ]; then
 
 [... diff truncated at ${MAX_DIFF_CHARS} chars ...]"
 fi
-recent_log="$(git log -n $([ "$BACKEND" = "brickverse" ] && echo 5 || echo 10) --pretty=format:'%s' 2>/dev/null || true)"
+recent_log="$(git log -n 10 --pretty=format:'%s' 2>/dev/null || true)"
 branch_name="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
 
 # Detect ticket id: explicit override > --no-ticket disables > branch name > recent commits.
@@ -268,12 +267,7 @@ _scan_conventions() {
   done
 }
 _repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-# Skip conventions scanning for brickverse — gpt-oss-120b has a tight
-# implicit input limit (~2 KB total) and the conventions text alone can
-# push the system prompt over the edge, causing silent empty responses.
-if [ "$BACKEND" != "brickverse" ]; then
-  _scan_conventions "$_repo_root"
-fi
+_scan_conventions "$_repo_root"
 
 # Inject conventions into the system prompt if any were found.
 conventions_rule=""
@@ -327,24 +321,7 @@ else
   OUTPUT_FORMAT="  <type>(<scope>): <subject>"
 fi
 
-if [ "$BACKEND" = "brickverse" ]; then
-  # Compact prompt for gpt-oss-120b (Brickverse). This model silently returns
-  # empty content when the total request exceeds ~2 KB, so every byte counts.
-  ticket_rule=""
-  [ -z "$ticket" ] && ticket_rule="- No ticket provided — do NOT invent any ticket id in the scope."
-  [ -n "$ticket" ] && ticket_rule="- Ticket ${ticket} must be the FIRST scope item, verbatim."
-
-  read -r -d '' SYSTEM_PROMPT <<EOF || true
-Write Conventional Commit messages. Format: type(scope): subject
-${body_rule}
-types: feat,fix,docs,style,refactor,perf,test,build,ci,chore,revert
-Scope: comma-separated in parens. Ticket first if provided, then inferred scopes (<=4 total).
-${ticket_rule}
-Match language of recent commits. Breaking: append ! + BREAKING CHANGE: footer.
-Output ONLY the commit message.
-EOF
-else
-  read -r -d '' SYSTEM_PROMPT <<EOF || true
+read -r -d '' SYSTEM_PROMPT <<EOF || true
 
 You write git commit messages that follow the Conventional Commits / Angular convention.
 
@@ -369,7 +346,6 @@ ${conventions_rule}
 ${GITMOJI_RULES}
 - Output ONLY the commit message — no code fences, no commentary, no "Here is..." preface
 EOF
-fi
 
 read -r -d '' USER_PROMPT <<EOF || true
 ${hint_line}
@@ -391,9 +367,9 @@ printf '🤖 Using backend: %s, model: %s\n' "$BACKEND" "$model" >&2
 ai_error="$(mktemp -t git-auto-commit.ai.XXXXXX)"
 trap 'rm -f "$ai_error"' EXIT
 # Join system and user prompts with a form-feed separator. The copilot path
-# flattens it back into blank lines; the brickverse path splits on \f and
-# sends them as proper `system` / `user` chat messages (gpt-oss reasoning
-# models behave noticeably better with that split).
+# flattens it back into blank lines; the brickverse helper splits on \f and
+# folds both parts into one `user` message (the deployed model-proxy rejects
+# `system`-role messages and ignores the top-level `instructions` field).
 prompt="${SYSTEM_PROMPT}"$'\f'"${USER_PROMPT}"
 
 case "$BACKEND" in
@@ -447,7 +423,7 @@ message="$(printf '%s\n' "$message" | awk '
 if [ -z "$message" ]; then
   echo "✗ Model returned an empty message." >&2
   echo "--- raw response ---" >&2
-  printf '%s\n' "$response" | head -40 >&2
+  printf '%s\n' "$message" | head -40 >&2
   exit 1
 fi
 

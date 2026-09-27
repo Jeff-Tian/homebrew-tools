@@ -19,12 +19,12 @@
 # `~/.cache/brickverse/cf_authorization` (mode 0600) for subsequent runs.
 #
 # Usage:
-#   git-auto-commit-ai.rb --model=gpt-oss-120b < prompt.txt
+#   git-auto-commit-ai.rb --model=llama-3.3-70b < prompt.txt
 #   echo "say hi" | git-auto-commit-ai.rb
 #
 # Env vars:
 #   BRICKVERSE_HOST  – override the model-proxy origin (default: https://pub.brickverse.net)
-#   AI_MODEL         – default model if --model is not given (default: gpt-oss-120b)
+#   AI_MODEL         – default model if --model is not given (default: llama-3.3-70b)
 #
 # Exit codes:
 #   0 – success, assistant message written to stdout
@@ -39,7 +39,12 @@ require 'uri'
 require 'rbconfig'
 
 BRICKVERSE_HOST = ENV['BRICKVERSE_HOST'] || 'https://pub.brickverse.net'
-DEFAULT_MODEL = ENV['AI_MODEL'] || 'gpt-oss-120b'
+# llama-3.3-70b is the default because it answers directly in ~25-70
+# completion tokens (~2-4s per call) and follows the commit-message
+# format/language rules reliably. Reasoning models (gpt-oss-*, qwen3-*,
+# gemma-4-*) spend tokens and wall-clock time on hidden chain-of-thought
+# before the answer, so they stay opt-in via --model / AI_MODEL.
+DEFAULT_MODEL = ENV['AI_MODEL'] || 'llama-3.3-70b'
 
 COOKIE_PATH = begin
   cache_root = if ENV['XDG_CACHE_HOME'] && !ENV['XDG_CACHE_HOME'].empty?
@@ -68,9 +73,14 @@ end
 
 # --- Read prompt from stdin ---
 # Expected format: system prompt, then a line containing only `\f` (form feed),
-# then the user prompt. The form-feed split keeps the bash caller simple while
-# letting us send proper `system` + `user` messages like auto_release_notes.rb
-# does — gpt-oss reasoning models behave noticeably better with that split.
+# then the user prompt. The form-feed split keeps the bash caller simple, but
+# the two parts are NOT sent as a `system` message: the deployed model-proxy
+# (and Cloudflare Workers AI behind it) rejects system-role messages with
+# HTTP 500 "System messages are not allowed... Use the instructions option
+# instead", and the proxy currently ignores a top-level `instructions` field.
+# The proven-working shape (same one auto_release_notes.rb relies on) is a
+# single user message, so we fold the system part in as a clearly labelled
+# prefix of that one user message.
 raw = $stdin.read.to_s
 if raw.strip.empty?
   warn '✗ Empty prompt on stdin.'
@@ -80,6 +90,15 @@ system_prompt, user_prompt = raw.split("\f", 2)
 if user_prompt.nil?
   # No separator: treat the whole input as the user prompt.
   system_prompt, user_prompt = nil, raw
+end
+
+def fold_prompt(system_prompt, user_prompt)
+  if system_prompt && !system_prompt.strip.empty?
+    "System instructions:\n#{system_prompt.strip}\n\n" \
+      "User request:\n#{user_prompt}"
+  else
+    user_prompt
+  end
 end
 
 # --- Cookie helpers ---
@@ -212,21 +231,32 @@ def resolve_token
 end
 
 # --- HTTP call ---
+# Returns [kind, content]. kind is one of:
+#   :ok        – content holds the assistant message
+#   :forbidden – Cloudflare Access rejected the cookie (caller should re-login)
+#   :empty     – HTTP 200 but no usable text (transient upstream truncation)
+#   :error     – any other failure (content holds a human-readable detail)
 def chat_completion(system_prompt, user_prompt, model, cookie)
   api_url = URI("#{BRICKVERSE_HOST}/model-proxy/v1/chat/completions")
 
-  messages = []
-  messages << { role: 'system', content: system_prompt } if system_prompt && !system_prompt.strip.empty?
-  messages << { role: 'user', content: user_prompt }
+  # The deployed model-proxy rejects `system`-role messages (HTTP 500) and
+  # ignores a top-level `instructions` field, so everything goes into one
+  # user message.
+  messages = [{ role: 'user', content: fold_prompt(system_prompt, user_prompt) }]
 
   body = {
     model: model,
     messages: messages,
-    # Reasoning models (gpt-oss-*) burn tokens on hidden chain-of-thought.
-    # 2000 is the proven value from auto_release_notes.rb; higher values can
-    # cause the model to return empty content with prompt_tokens: 0.
     max_tokens: 2000,
-    temperature: 0.2
+    temperature: 0.2,
+    # Stream the response (SSE). Workers AI / the model-proxy historically
+    # returned numeric token-id chunks (e.g. {"content":250}) that surfaced
+    # either as an opaque HTTP 500 (non-streaming) or as an "[Error: ...]"
+    # SSE frame (streaming); the model-proxy now sanitizes those chunks, but
+    # streaming is kept because it reports mid-stream failures readably and
+    # plays well with the retry loop below, which still absorbs transient
+    # network/open-timeout errors and older proxy deployments.
+    stream: true
   }
 
   http = Net::HTTP.new(api_url.host, api_url.port)
@@ -267,50 +297,91 @@ def chat_completion(system_prompt, user_prompt, model, cookie)
     end
   end
 
-  resp = http.request(req)
+  status = nil
+  error_body = +""
+  parts = []
+  stream_error = nil
 
-  if ENV['GIT_AUTO_COMMIT_AI_DEBUG'] == '1'
-    warn "[ai] DEBUG: response status=#{resp.code}"
-    resp.each_header { |k, v| warn "[ai] DEBUG: response header: #{k}=#{v}" }
+  # Events are separated by a blank line. TCP segments can split events, so
+  # keep an accumulating buffer and only consume frame blocks that are whole.
+  sse_buffer = +""
+  consume_frame = lambda do |frame|
+    frame.each_line do |line|
+      line = line.strip
+      next if line.empty? || line.start_with?(':')
+      next unless line.start_with?('data:')
+
+      payload = line.sub(/\Adata:\s?/, '')
+      break if payload == '[DONE]'
+
+      begin
+        data = JSON.parse(payload)
+      rescue JSON::ParserError
+        next
+      end
+      choice = data.dig('choices', 0) || {}
+      delta = choice['delta'] || {}
+      content = delta['content']
+      # The proxy encodes mid-stream failures as a normal frame carrying an
+      # "[Error: ...]" text with finish_reason "error".
+      if choice['finish_reason'] == 'error' || content.to_s.start_with?("\n\n[Error:")
+        stream_error = content.to_s
+        next
+      end
+      # Belt-and-braces: never let a stray numeric token id reach the output.
+      parts << content if content.is_a?(String)
+    end
   end
 
-  case resp
-  when Net::HTTPSuccess
-    warn resp.body
-    data = JSON.parse(resp.body)
-    message = data.dig('choices', 0, 'message') || {}
-    # Reasoning models can put the answer in `content`, `reasoning_content`,
-    # `reasoning`, or split it across fields; try them in priority order.
-    content = message['content']
-    content = message['reasoning_content'] if content.nil? || content.strip.empty?
-    content = message['reasoning'] if content.nil? || content.strip.empty?
-    # Some Workers AI responses put the text directly on the choice or under
-    # `response` — handle those shapes too so we don't silently return nil.
-    if content.nil? || content.strip.empty?
-      choice = data.dig('choices', 0) || {}
-      content = choice['text'] || data['response']
+  http.request(req) do |resp|
+    status = resp.code
+    if resp.is_a?(Net::HTTPSuccess)
+      resp.read_body do |segment|
+        sse_buffer << segment
+        # Split on blank-line event boundaries while keeping the leftover
+        # (possibly partial event) in the buffer.
+        while (idx = sse_buffer.index(/\r?\n\r?\n/))
+          frame = sse_buffer[0...idx]
+          sse_buffer.replace(sse_buffer[(idx + Regexp.last_match(0).length)..-1] || +'')
+          consume_frame.call(frame)
+        end
+      end
+      consume_frame.call(sse_buffer) unless sse_buffer.strip.empty?
+    else
+      resp.read_body { |segment| error_body << segment }
     end
-    if content.nil? || content.strip.empty?
-      warn '[ai] Empty content in API response. Raw body (first 500 chars):'
-      warn resp.body.to_s[0..500]
-      return nil
+  end
+
+  if ENV['GIT_AUTO_COMMIT_AI_DEBUG'] == '1'
+    warn "[ai] DEBUG: response status=#{status}, collected #{parts.join.size} chars"
+  end
+
+  case status
+  when '200'
+    if stream_error
+      detail = "stream error frame: #{stream_error.to_s[0..300]}"
+      return [stream_error =~ /Type validation/i ? :retryable : :empty, detail]
     end
-    return content.strip
-  when Net::HTTPForbidden
+    content = parts.join.strip
+    return [:empty, 'empty content in SSE stream (no text frames received)'] if content.empty?
+
+    [:ok, content]
+  when '403'
     clear_stored_cookie
     unless File.exist?(POST_LOGIN_WARN_PATH)
-      warn '[ai] Cloudflare Access cookie rejected (HTTP 403). The next run will ask you to log in again.'
+      warn '[ai] Cloudflare Access cookie rejected (HTTP 403). Re-authenticating…'
       FileUtils.mkdir_p(File.dirname(POST_LOGIN_WARN_PATH))
       File.write(POST_LOGIN_WARN_PATH, Time.now.to_i.to_s)
     end
-    nil
+    [:forbidden, "Cloudflare Access cookie rejected (HTTP 403): #{error_body.to_s[0..200]}"]
   else
-    warn "[ai] API returned #{resp.code}: #{resp.body.to_s[0..200]}"
-    nil
+    detail = "API returned #{status}: #{error_body.to_s[0..300]}"
+    # 5xx are commonly the proxy's intermittent upstream parsing errors —
+    # worth retrying; other 4xx are deterministic client errors.
+    [status.to_s.start_with?('5') ? :retryable : :error, detail]
   end
 rescue StandardError => e
-  warn "[ai] Request failed: #{e.class}: #{e.message}"
-  nil
+  [:retryable, "Request failed: #{e.class}: #{e.message}"]
 end
 
 # --- Main ---
@@ -322,24 +393,55 @@ end
 
 warn "[ai] Using model: #{model} via #{BRICKVERSE_HOST}"
 
-# gpt-oss-120b on Brickverse intermittently returns empty content (with
-# prompt_tokens: 0) even for small prompts. Retry a few times — the
-# failure is transient and a retry usually succeeds.
-MAX_RETRIES = 3
+# The deployed model-proxy fails intermittently (measured ~70% per-call
+# success on 2026-09: Cloudflare sometimes streams numeric token-id chunks,
+# which the proxy's response schema rejects with HTTP 500 "Type validation
+# failed", and reasoning models occasionally return empty content). The
+# failures are independent between calls, so a handful of retries takes the
+# overall success rate above ~99%.
+MAX_ATTEMPTS = 4
 message = nil
-MAX_RETRIES.times do |attempt|
-  warn "[ai] Attempt #{attempt + 1}/#{MAX_RETRIES}…" if attempt > 0
-  message = chat_completion(system_prompt, user_prompt, model, cookie)
-  break if message && !message.empty?
-  # Brief pause before retry (1s, 2s, 4s)
-  sleep(2**attempt) if attempt < MAX_RETRIES - 1
+last_detail = nil
+
+MAX_ATTEMPTS.times do |attempt|
+  warn "[ai] Attempt #{attempt + 1}/#{MAX_ATTEMPTS}…" if attempt > 0
+  kind, detail = chat_completion(system_prompt, user_prompt, model, cookie)
+
+  case kind
+  when :ok
+    message = detail
+    break
+  when :forbidden
+    # Cached cookie expired mid-run: drop it and run the interactive login
+    # immediately (previously the user had to wait for the next invocation).
+    cookie = resolve_token
+    last_detail = detail
+    unless cookie
+      warn '✗ Re-authentication failed.'
+      exit 1
+    end
+  when :empty
+    # Upstream answered 200 but with no usable text — retry.
+    last_detail = detail
+    warn "[ai] #{detail}"
+  when :retryable
+    last_detail = detail
+    warn "[ai] #{detail}"
+  else
+    # Deterministic client error (4xx other than 403) — retrying won't help.
+    warn "✗ #{detail}"
+    exit 1
+  end
+
+  sleep(2**attempt) if attempt < MAX_ATTEMPTS - 1
 end
 
 # Clean up the one-shot warn flag so the next fresh run can warn again.
 File.delete(POST_LOGIN_WARN_PATH) if File.exist?(POST_LOGIN_WARN_PATH)
 
 if message.nil? || message.empty?
-  warn "✗ Empty response from Brickverse model-proxy after #{MAX_RETRIES} attempts."
+  warn "✗ No usable response from Brickverse model-proxy after #{MAX_ATTEMPTS} attempts."
+  warn "  Last error: #{last_detail}" if last_detail
   exit 1
 end
 

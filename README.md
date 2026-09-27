@@ -173,10 +173,10 @@ Environment overrides:
 |---|---|---|
 | `GIT_AUTO_COMMIT_TICKET_PATTERN` | `([A-Z][A-Z0-9]+-[0-9]+\|#[0-9]+)` | Regex for ticket id detection |
 | `GIT_AUTO_COMMIT_BACKEND` | `copilot` | AI backend: `copilot` (Copilot CLI) or `brickverse` (Cloudflare Workers AI) |
-| `GIT_AUTO_COMMIT_MODEL` | `gemini-3.5-flash` (copilot)<br>`gpt-oss-120b` (brickverse) | Model name passed to the selected backend |
-| `GIT_AUTO_COMMIT_MAX_DIFF` | `12000` (copilot) / `6000` (brickverse) | Truncate the staged diff at N chars before sending. The brickverse default is lower because gpt-oss-120b silently returns an empty completion when the total prompt exceeds ~12–13 KB. |
+| `GIT_AUTO_COMMIT_MODEL` | `gemini-3.5-flash` (copilot)<br>`llama-3.3-70b` (brickverse) | Model name passed to the selected backend |
+| `GIT_AUTO_COMMIT_MAX_DIFF` | `12000` | Truncate the staged diff at N chars before sending. |
 | `BRICKVERSE_HOST` | `https://pub.brickverse.net` | (brickverse backend only) Override the model-proxy origin |
-| `AI_MODEL` | `gpt-oss-120b` | (brickverse backend only) Default model if `--model` / `GIT_AUTO_COMMIT_MODEL` not set |
+| `AI_MODEL` | `llama-3.3-70b` | (brickverse backend only) Default model if `--model` / `GIT_AUTO_COMMIT_MODEL` not set |
 
 ### `git-dco`
 
