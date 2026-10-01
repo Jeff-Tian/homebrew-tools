@@ -19,6 +19,7 @@ class GitAutoCommit < Formula
               'VERSION="${GIT_AUTO_COMMIT_VERSION:-}"',
               "VERSION=\"#{v}\""
     bin.install "bin/git-auto-commit"
+    bin.install "bin/git-auto-commit-ai.rb"
     if File.exist?("bin/gitmojis.txt")
       bin.install "bin/gitmojis.txt"
     end
@@ -28,8 +29,14 @@ class GitAutoCommit < Formula
     assert_match "git-auto-commit #{version}",
                  shell_output("#{bin}/git-auto-commit --version")
 
+    assert_predicate bin/"git-auto-commit-ai.rb", :executable?
+
     # Outside a git repo it should fail cleanly before invoking Copilot CLI.
     output = shell_output("#{bin}/git-auto-commit --dry-run 2>&1", 1)
     assert_match(/Not inside a git repository|Nothing staged/, output)
+
+    # Verify the packaged executable resolves its Brickverse helper.
+    output = shell_output("#{bin}/git-auto-commit --backend=brickverse --dry-run 2>&1", 1)
+    assert_match "Not inside a git repository", output
   end
 end
