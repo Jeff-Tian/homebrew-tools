@@ -26,7 +26,10 @@ require 'net/http'
 require 'uri'
 
 BRICKVERSE_HOST = ENV['BRICKVERSE_HOST'] || 'https://pub.brickverse.net'
-COOKIE_PATH = File.expand_path('~/.cache/brickverse/cf_authorization')
+COOKIE_PATH = File.join(
+  (ENV['XDG_CACHE_HOME'].to_s.empty? ? File.expand_path('~/.cache') : ENV['XDG_CACHE_HOME']),
+  'brickverse', 'cf_authorization'
+)
 MODEL = ENV['AI_MODEL'] || 'llama-3.3-70b'
 
 unless File.exist?(COOKIE_PATH)
