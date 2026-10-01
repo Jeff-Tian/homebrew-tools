@@ -173,10 +173,9 @@ Environment overrides:
 |---|---|---|
 | `GIT_AUTO_COMMIT_TICKET_PATTERN` | `([A-Z][A-Z0-9]+-[0-9]+\|#[0-9]+)` | Regex for ticket id detection |
 | `GIT_AUTO_COMMIT_BACKEND` | `copilot` | AI backend: `copilot` (Copilot CLI) or `brickverse` (Cloudflare Workers AI) |
-| `GIT_AUTO_COMMIT_MODEL` | `gemini-3.5-flash` (copilot)<br>`llama-3.3-70b` (brickverse) | Model name passed to the selected backend |
+| `AI_MODEL` | `gemini-3.5-flash` (copilot)<br>`llama-3.3-70b` (brickverse) | Model name passed to the selected backend; `--model` takes precedence |
 | `GIT_AUTO_COMMIT_MAX_DIFF` | `12000` | Truncate the staged diff at N chars before sending. |
 | `BRICKVERSE_HOST` | `https://pub.brickverse.net` | (brickverse backend only) Override the model-proxy origin |
-| `AI_MODEL` | `llama-3.3-70b` | (brickverse backend only) Default model if `--model` / `GIT_AUTO_COMMIT_MODEL` not set |
 
 ### `git-dco`
 

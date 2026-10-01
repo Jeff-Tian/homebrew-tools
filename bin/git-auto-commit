@@ -70,8 +70,8 @@ fi
 VERSION="${GIT_AUTO_COMMIT_VERSION:-}"
 
 # Default to the fastest model we measured end-to-end (gemini-3.5-flash ≈ 25s,
-# vs ≈ 45s for `auto`). Override with GIT_AUTO_COMMIT_MODEL or --model=...
-DEFAULT_MODEL="${GIT_AUTO_COMMIT_MODEL:-gemini-3.5-flash}"
+# vs ≈ 45s for `auto`). Override with AI_MODEL or --model=...
+DEFAULT_MODEL="${AI_MODEL:-gemini-3.5-flash}"
 MAX_DIFF_CHARS="${GIT_AUTO_COMMIT_MAX_DIFF:-12000}"
 TICKET_PATTERN="${GIT_AUTO_COMMIT_TICKET_PATTERN:-([A-Z][A-Z0-9]+-[0-9]+|#[0-9]+)}"
 # Backend selection: copilot (GitHub Copilot CLI, default, ~25-45s per call)
@@ -81,9 +81,9 @@ BACKEND="${GIT_AUTO_COMMIT_BACKEND:-copilot}"
 # Track whether the user explicitly chose a model via env or --model=... so we
 # can pick a backend-appropriate default later (after --backend=... parsing).
 USER_SET_MODEL=0
-if [ -n "${GIT_AUTO_COMMIT_MODEL:-}" ]; then
+if [ -n "${AI_MODEL:-}" ]; then
   USER_SET_MODEL=1
-  DEFAULT_MODEL="$GIT_AUTO_COMMIT_MODEL"
+  DEFAULT_MODEL="$AI_MODEL"
 else
   DEFAULT_MODEL=""
 fi
@@ -136,7 +136,7 @@ done
 # --model for anyone who wants them.
 if [ "$USER_SET_MODEL" = "0" ]; then
   case "$BACKEND" in
-    brickverse) model="llama-3.3-70b" ;;
+    brickverse) model="${AI_MODEL:-llama-3.3-70b}" ;;
     *)          model="gemini-3.5-flash" ;;
   esac
 fi
