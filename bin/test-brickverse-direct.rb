@@ -117,9 +117,15 @@ puts "Host: #{BRICKVERSE_HOST}   Model: #{MODEL}"
 
 # Test 1: minimal prompt (validates cookie, model, folding, SSE plumbing)
 sys1 = 'You are a helpful assistant. Reply in one short sentence.'
+failed = false
 status1, out1 = call(cookie, "#{sys1}\n\n---\n\nSay hello")
 puts "\n=== Test 1: minimal folded prompt → HTTP #{status1} (#{out1.size} chars)"
-puts out1.empty? ? '❌ FAILED: empty' : "✅ #{out1.strip}"
+if status1 != '200' || out1.empty?
+  failed = true
+  puts out1.empty? ? '❌ FAILED: empty' : "❌ FAILED: #{out1.strip}"
+else
+  puts "✅ #{out1.strip}"
+end
 
 # Test 2: commit-message style prompt with a ~12KB diff (the size the bash
 # script ships after truncation; this size exposes the upstream
@@ -129,4 +135,11 @@ sys2 = "Write Conventional Commit messages. Format: type(scope): subject\nOutput
 usr2 = "Recent commits:\nfeat: initial version\n\nStaged diff:\n#{diff}"
 status2, out2 = call(cookie, "#{sys2}\n\n---\n\n#{usr2}")
 puts "\n=== Test 2: commit prompt with #{diff.bytesize}B diff → HTTP #{status2} (#{out2.size} chars)"
-puts out2.empty? ? '❌ FAILED: empty' : "✅ #{out2.strip.lines.first(3).map(&:rstrip).join("\n")}"
+if status2 != '200' || out2.empty?
+  failed = true
+  puts out2.empty? ? '❌ FAILED: empty' : "❌ FAILED: #{out2.strip}"
+else
+  puts "✅ #{out2.strip.lines.first(3).map(&:rstrip).join("\n")}"
+end
+
+exit 1 if failed

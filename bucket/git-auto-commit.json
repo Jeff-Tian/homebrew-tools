@@ -9,9 +9,11 @@
   "url": [
     "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit#/git-auto-commit",
     "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit.cmd#/git-auto-commit.cmd",
-    "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/gitmojis.txt#/gitmojis.txt"
+    "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/gitmojis.txt#/gitmojis.txt",
+    "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit-ai.rb#/git-auto-commit-ai.rb"
   ],
   "hash": [
+    "skip",
     "skip",
     "skip",
     "skip"
@@ -33,9 +35,11 @@
     "url": [
       "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit#/git-auto-commit",
       "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit.cmd#/git-auto-commit.cmd",
-      "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/gitmojis.txt#/gitmojis.txt"
+      "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/gitmojis.txt#/gitmojis.txt",
+      "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit-ai.rb#/git-auto-commit-ai.rb"
     ],
     "hash": [
+      "skip",
       "skip",
       "skip",
       "skip"
