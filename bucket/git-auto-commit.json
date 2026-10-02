@@ -4,7 +4,8 @@
   "homepage": "https://github.com/Jeff-Tian/homebrew-tools",
   "license": "MIT",
   "depends": [
-    "git"
+    "git",
+    "ruby"
   ],
   "url": [
     "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/git-auto-commit#/git-auto-commit",
