@@ -25,6 +25,7 @@
 #   git auto-commit --ticket=ABC-123      # force a ticket id into scope
 #   git auto-commit --no-ticket           # do NOT auto-add a ticket id
 #   git auto-commit --model=gpt-5.4-mini
+#   git auto-commit --backend=brickverse  # use Cloudflare Workers AI instead of Copilot CLI
 #   git auto-commit --dry-run             # print message, do not commit
 #   git auto-commit --print               # just print to stdout (no commit, no prompt)
 #   git auto-commit --no-body             # subject only
@@ -46,9 +47,14 @@
 #   Pass --no-sign-off to disable.
 #
 # Auth:
-#   Uses the GitHub Copilot CLI's existing login. Run `copilot login` if needed.
+#   - backend=copilot   : uses the GitHub Copilot CLI's existing login.
+#                         Run `copilot login` if needed.
+#   - backend=brickverse: uses the Brickverse model-proxy behind Cloudflare
+#                         Access. First run opens a browser for login; the
+#                         cookie is cached at ~/.cache/brickverse/cf_authorization.
 #
-# Requirements: git, GitHub Copilot CLI.
+# Requirements: git. Plus: GitHub Copilot CLI (copilot backend) or ruby
+# (brickverse backend).
 
 set -euo pipefail
 
@@ -64,12 +70,25 @@ fi
 VERSION="${GIT_AUTO_COMMIT_VERSION:-}"
 
 # Default to the fastest model we measured end-to-end (gemini-3.5-flash ≈ 25s,
-# vs ≈ 45s for `auto`). Override with GIT_AUTO_COMMIT_MODEL or --model=...
-DEFAULT_MODEL="${GIT_AUTO_COMMIT_MODEL:-gemini-3.5-flash}"
+# vs ≈ 45s for `auto`). Override with AI_MODEL or --model=...
+DEFAULT_MODEL="${AI_MODEL:-gemini-3.5-flash}"
 MAX_DIFF_CHARS="${GIT_AUTO_COMMIT_MAX_DIFF:-12000}"
 TICKET_PATTERN="${GIT_AUTO_COMMIT_TICKET_PATTERN:-([A-Z][A-Z0-9]+-[0-9]+|#[0-9]+)}"
+# Backend selection: copilot (GitHub Copilot CLI, default, ~25-45s per call)
+# or brickverse (Cloudflare Workers AI behind pub.brickverse.net, ~2-5s).
+BACKEND="${GIT_AUTO_COMMIT_BACKEND:-copilot}"
 
-usage() { sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; }
+# Track whether the user explicitly chose a model via env or --model=... so we
+# can pick a backend-appropriate default later (after --backend=... parsing).
+USER_SET_MODEL=0
+if [ -n "${AI_MODEL:-}" ]; then
+  USER_SET_MODEL=1
+  DEFAULT_MODEL="$AI_MODEL"
+else
+  DEFAULT_MODEL=""
+fi
+
+usage() { sed -n '2,37p' "$0" | sed 's/^# \{0,1\}//'; }
 
 assume_yes=0
 stage_all=0
@@ -101,16 +120,63 @@ for arg in "$@"; do
     --no-ticket) no_ticket=1 ;;
     --no-gitmoji) use_gitmoji=0 ;;
     --gitmoji) use_gitmoji=1 ;;
-    --model=*) model="${arg#*=}" ;;
+    --model=*) model="${arg#*=}"; USER_SET_MODEL=1 ;;
+    --backend=*) BACKEND="${arg#*=}" ;;
     *) echo "✗ Unknown argument: $arg" >&2; usage >&2; exit 2 ;;
   esac
 done
 
+# Pick a backend-appropriate default model when the user did not choose one.
+# Copilot default: lowest end-to-end latency among the CLI's available models.
+# Brickverse default: a non-reasoning Workers AI model. Reasoning models
+# (gpt-oss-*, qwen3-*) spend tokens and wall-clock time on hidden
+# chain-of-thought before the answer; llama-3.3-70b answers directly in a
+# few dozen tokens (~2-4s) and follows the commit-message format/language
+# rules most reliably in practice. Reasoning models stay available via
+# --model for anyone who wants them.
+if [ "$USER_SET_MODEL" = "0" ]; then
+  case "$BACKEND" in
+    brickverse) model="${AI_MODEL:-llama-3.3-70b}" ;;
+    *)          model="gemini-3.5-flash" ;;
+  esac
+fi
+
+# Diff size cap. Both backends comfortably handle ~12K chars of diff;
+# override with GIT_AUTO_COMMIT_MAX_DIFF.
+if [ -n "${GIT_AUTO_COMMIT_MAX_DIFF:-}" ]; then
+  MAX_DIFF_CHARS="$GIT_AUTO_COMMIT_MAX_DIFF"
+else
+  MAX_DIFF_CHARS=12000
+fi
+
 command -v git >/dev/null 2>&1 || { echo "✗ git not found" >&2; exit 127; }
-command -v copilot >/dev/null 2>&1 || {
-  echo "✗ GitHub Copilot CLI not found. Install it, then run 'copilot login'." >&2
-  exit 127
-}
+
+# Per-backend dependency checks and helper resolution.
+_AI_HELPER=""
+case "$BACKEND" in
+  copilot)
+    command -v copilot >/dev/null 2>&1 || {
+      echo "✗ GitHub Copilot CLI not found. Install it, then run 'copilot login'." >&2
+      exit 127
+    }
+    ;;
+  brickverse)
+    command -v ruby >/dev/null 2>&1 || {
+      echo "✗ ruby not found (needed for the brickverse backend)." >&2
+      exit 127
+    }
+    _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    _AI_HELPER="$_SCRIPT_DIR/git-auto-commit-ai.rb"
+    if [ ! -f "$_AI_HELPER" ]; then
+      echo "✗ Brickverse helper not found: $_AI_HELPER" >&2
+      exit 127
+    fi
+    ;;
+  *)
+    echo "✗ Unknown backend: $BACKEND (expected 'copilot' or 'brickverse')" >&2
+    exit 2
+    ;;
+esac
 
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
   echo "✗ Not inside a git repository." >&2; exit 1;
@@ -256,6 +322,7 @@ else
 fi
 
 read -r -d '' SYSTEM_PROMPT <<EOF || true
+
 You write git commit messages that follow the Conventional Commits / Angular convention.
 
 Output format — strictly:
@@ -295,22 +362,41 @@ Staged diff:
 ${diff_body}
 EOF
 
-printf '🤖 Using model: %s\n' "$model" >&2
+printf '🤖 Using backend: %s, model: %s\n' "$BACKEND" "$model" >&2
 
-copilot_error="$(mktemp -t git-auto-commit.copilot.XXXXXX)"
-trap 'rm -f "$copilot_error"' EXIT
-prompt="${SYSTEM_PROMPT}
+ai_error="$(mktemp -t git-auto-commit.ai.XXXXXX)"
+trap 'rm -f "$ai_error"' EXIT
+# Join system and user prompts with a form-feed separator. The copilot path
+# flattens it back into blank lines; the brickverse helper splits on \f and
+# folds both parts into one `user` message (the deployed model-proxy rejects
+# `system`-role messages and ignores the top-level `instructions` field).
+prompt="${SYSTEM_PROMPT}"$'\f'"${USER_PROMPT}"
 
-${USER_PROMPT}"
-if ! message="$(env -u GITHUB_TOKEN -u GH_TOKEN \
-  copilot --no-color --no-custom-instructions --disable-builtin-mcps \
-    --available-tools='' --no-ask-user --stream=off --silent \
-    --model="$model" --prompt "$prompt" 2>"$copilot_error")"; then
-  echo "✗ Copilot CLI could not generate a commit message." >&2
-  head -40 "$copilot_error" >&2 || true
-  echo "  For authentication failures, run 'copilot login' and try again." >&2
-  exit 1
-fi
+case "$BACKEND" in
+  copilot)
+    # Flatten the \f separator back into blank lines for the copilot CLI,
+    # which expects a single plain-text prompt.
+    copilot_prompt="$(printf '%s' "$prompt" | tr '\f' '\n')"
+    if ! message="$(env -u GITHUB_TOKEN -u GH_TOKEN \
+      copilot --no-color --no-custom-instructions --disable-builtin-mcps \
+        --available-tools='' --no-ask-user --stream=off --silent \
+        --model="$model" --prompt "$copilot_prompt" 2>"$ai_error")"; then
+      echo "✗ Copilot CLI could not generate a commit message." >&2
+      head -40 "$ai_error" >&2 || true
+      echo "  For authentication failures, run 'copilot login' and try again." >&2
+      exit 1
+    fi
+    ;;
+  brickverse)
+    if ! message="$(printf '%s' "$prompt" | ruby "$_AI_HELPER" --model="$model" 2>"$ai_error")"; then
+      echo "✗ Brickverse model-proxy could not generate a commit message." >&2
+      head -40 "$ai_error" >&2 || true
+      exit 1
+    fi
+    # Surface helper diagnostics (login prompts, [ai] info lines) to the user.
+    [ -s "$ai_error" ] && cat "$ai_error" >&2
+    ;;
+esac
 
 message="$(printf '%s' "$message" | sed -e 's/^```[a-zA-Z]*$//' -e 's/^```$//' | \
   awk 'NF || p {p=1; print}')"
@@ -337,7 +423,7 @@ message="$(printf '%s\n' "$message" | awk '
 if [ -z "$message" ]; then
   echo "✗ Model returned an empty message." >&2
   echo "--- raw response ---" >&2
-  printf '%s\n' "$response" | head -40 >&2
+  printf '%s\n' "$message" | head -40 >&2
   exit 1
 fi
 

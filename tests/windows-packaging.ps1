@@ -86,7 +86,7 @@ function Assert-Manifest {
     $urls = @($manifest.url)
     $expectedFiles = @($ToolName, "$ToolName.cmd")
     if ($ToolName -eq 'git-auto-commit') {
-        $expectedFiles += 'gitmojis.txt'
+        $expectedFiles += @('gitmojis.txt', 'git-auto-commit-ai.rb')
     }
     foreach ($fileName in $expectedFiles) {
         $expectedUrl = "https://raw.githubusercontent.com/Jeff-Tian/homebrew-tools/main/bin/$fileName#/$fileName"
@@ -97,7 +97,7 @@ function Assert-Manifest {
 
     $hashes = @($manifest.hash)
     $nonSkipHashes = @($hashes | Where-Object { $_ -ne 'skip' })
-    $expectedHashCount = if ($ToolName -eq 'git-auto-commit') { 3 } else { 2 }
+    $expectedHashCount = if ($ToolName -eq 'git-auto-commit') { 4 } else { 2 }
     if ($hashes.Count -ne $expectedHashCount -or $nonSkipHashes.Count -ne 0) {
         throw "$manifestPath should use $expectedHashCount 'skip' hashes for branch-based raw URLs"
     }
@@ -128,7 +128,7 @@ function Assert-Installer {
             throw "install.ps1 failed with exit code $LASTEXITCODE"
         }
 
-        foreach ($fileName in @('git-auto-commit', 'git-auto-commit.cmd', 'git-dco', 'git-dco.cmd')) {
+        foreach ($fileName in @('git-auto-commit', 'git-auto-commit.cmd', 'git-auto-commit-ai.rb', 'git-dco', 'git-dco.cmd')) {
             $installedPath = Join-Path $sandbox $fileName
             if (-not (Test-Path $installedPath)) {
                 throw "install.ps1 should install $fileName to $sandbox"
@@ -147,7 +147,7 @@ function Assert-Installer {
 
 Assert-Wrapper 'git-auto-commit'
 Assert-Wrapper 'git-dco'
-Assert-Manifest 'git-auto-commit' @('git')
+Assert-Manifest 'git-auto-commit' @('git', 'ruby')
 Assert-Manifest 'git-dco' @('git')
 Assert-Installer
 
