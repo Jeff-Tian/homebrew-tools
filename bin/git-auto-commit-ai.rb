@@ -33,8 +33,10 @@
 require 'fileutils'
 require 'json'
 require 'net/http'
+require 'securerandom'
 require 'socket'
 require 'timeout'
+require 'tmpdir'
 require 'uri'
 require 'rbconfig'
 
@@ -288,8 +290,13 @@ def chat_completion(system_prompt, user_prompt, model, cookie)
   req.body = JSON.generate(body)
 
   if ENV['GIT_AUTO_COMMIT_AI_DEBUG'] == '1'
-    File.write('/tmp/gac-req-body.json', req.body)
-    warn "[ai] DEBUG: wrote request body to /tmp/gac-req-body.json (#{req.body.bytesize} bytes)"
+    # Use a randomly named, owner-only temp file instead of a fixed
+    # /tmp path: a fixed path is symlink-attackable and world-readable.
+    debug_path = File.join(Dir.tmpdir, "gac-req-body-#{SecureRandom.hex(8)}.json")
+    File.open(debug_path, File::WRONLY | File::CREAT | File::EXCL, 0o600) do |f|
+      f.write(req.body)
+    end
+    warn "[ai] DEBUG: wrote request body to #{debug_path} (#{req.body.bytesize} bytes)"
     warn "[ai] DEBUG: request URL: #{api_url}"
     warn "[ai] DEBUG: model=#{model}, messages count=#{messages.size}"
     messages.each_with_index do |m, i|

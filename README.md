@@ -64,7 +64,8 @@ git dco init
 - **copilot** (default) — GitHub Copilot CLI. Install it and run `copilot login` once.
 - **brickverse** — [Brickverse](https://pub.brickverse.net) model-proxy (Cloudflare Workers AI).
   First run opens a browser for Cloudflare Access login and caches the cookie at
-  `~/.cache/brickverse/cf_authorization`. Requires Ruby. Significantly faster than Copilot CLI
+  `$XDG_CACHE_HOME/brickverse/cf_authorization` when `XDG_CACHE_HOME` is non-empty, or
+  `~/.cache/brickverse/cf_authorization` otherwise. Requires Ruby. Significantly faster than Copilot CLI
   (~2-5s vs ~25-45s per call).
 
 ## Tools
