@@ -286,8 +286,15 @@ def chat_completion(system_prompt, user_prompt, model, cookie)
 
   req = Net::HTTP::Post.new(api_url)
   req['Cookie'] = "CF_Authorization=#{cookie}"
-  req['Content-Type'] = 'application/json'
-  req.body = JSON.generate(body)
+  # Render's edge WAF 403s prompts containing shell code (git diffs);
+  # base64 hides them. Older proxies answer 415, then we fall back to JSON.
+  if $plain_json
+    req['Content-Type'] = 'application/json'
+    req.body = JSON.generate(body)
+  else
+    req['Content-Type'] = 'application/x-base64-json'
+    req.body = [JSON.generate(body)].pack('m0')
+  end
 
   if ENV['GIT_AUTO_COMMIT_AI_DEBUG'] == '1'
     # Use a randomly named, owner-only temp file instead of a fixed
@@ -374,13 +381,23 @@ def chat_completion(system_prompt, user_prompt, model, cookie)
 
     [:ok, content]
   when '403'
-    clear_stored_cookie
-    unless File.exist?(POST_LOGIN_WARN_PATH)
-      warn '[ai] Cloudflare Access cookie rejected (HTTP 403). Re-authenticating…'
-      FileUtils.mkdir_p(File.dirname(POST_LOGIN_WARN_PATH))
-      File.write(POST_LOGIN_WARN_PATH, Time.now.to_i.to_s)
+    # Distinguish WAF/Firewall blocks (HTML "Blocked" page) from Access
+    # cookie expiry.  A WAF block is not fixable by re-authenticating;
+    # clearing the cookie just forces pointless interactive logins.
+    if error_body.include?('<title>Blocked</title>') || error_body.include?('<title>Attention Required</title>')
+      [:error, "Edge WAF (Render/Cloudflare) blocked the request (HTTP 403): #{error_body.to_s[0..200]}"]
+    else
+      clear_stored_cookie
+      unless File.exist?(POST_LOGIN_WARN_PATH)
+        warn '[ai] Cloudflare Access cookie rejected (HTTP 403). Re-authenticating…'
+        FileUtils.mkdir_p(File.dirname(POST_LOGIN_WARN_PATH))
+        File.write(POST_LOGIN_WARN_PATH, Time.now.to_i.to_s)
+      end
+      [:forbidden, "Cloudflare Access cookie rejected (HTTP 403): #{error_body.to_s[0..200]}"]
     end
-    [:forbidden, "Cloudflare Access cookie rejected (HTTP 403): #{error_body.to_s[0..200]}"]
+  when '415'
+    $plain_json = true
+    [:retryable, 'model-proxy does not accept base64 bodies yet; retrying with plain JSON']
   else
     detail = "API returned #{status}: #{error_body.to_s[0..300]}"
     # 5xx are commonly the proxy's intermittent upstream parsing errors —

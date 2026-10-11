@@ -69,9 +69,9 @@ if [ -z "${GIT_AUTO_COMMIT_VERSION:-}" ]; then
 fi
 VERSION="${GIT_AUTO_COMMIT_VERSION:-}"
 
-# Default to the fastest model we measured end-to-end (gemini-3.5-flash ≈ 25s,
+# Default to the fastest model we measured end-to-end (claude-opus-5.5 ≈ 25s,
 # vs ≈ 45s for `auto`). Override with AI_MODEL or --model=...
-DEFAULT_MODEL="${AI_MODEL:-gemini-3.5-flash}"
+DEFAULT_MODEL="${AI_MODEL:-claude-opus-5.5}"
 MAX_DIFF_CHARS="${GIT_AUTO_COMMIT_MAX_DIFF:-12000}"
 TICKET_PATTERN="${GIT_AUTO_COMMIT_TICKET_PATTERN:-([A-Z][A-Z0-9]+-[0-9]+|#[0-9]+)}"
 # Backend selection: copilot (GitHub Copilot CLI, default, ~25-45s per call)
@@ -137,7 +137,7 @@ done
 if [ "$USER_SET_MODEL" = "0" ]; then
   case "$BACKEND" in
     brickverse) model="${AI_MODEL:-llama-3.3-70b}" ;;
-    *)          model="gemini-3.5-flash" ;;
+    *)          model="claude-opus-5.5" ;;
   esac
 fi
 
@@ -397,6 +397,19 @@ case "$BACKEND" in
     [ -s "$ai_error" ] && cat "$ai_error" >&2
     ;;
 esac
+
+# Strip ANSI escape sequences from model output. The Copilot CLI may emit
+# OSC 8 hyperlinks around issue references (e.g. #587 → clickable link)
+# and other terminal formatting that must not appear in a commit message.
+# OSC 8 format: ESC ] 8 ; params ; uri ST <visible text> ESC ] 8 ; ; ST
+# where ST (string terminator) is ESC \ or BEL (0x07).
+# After stripping, only the visible link text (e.g. #587) remains.
+if command -v perl >/dev/null 2>&1; then
+  message="$(printf '%s' "$message" | perl -0777 -pe '
+    s/\e\]8;[^\e\a]*(?:\e\\|\a)//g;   # OSC 8 hyperlinks
+    s/\e\[[0-9;]*[a-zA-Z]//g;         # CSI sequences (colors, cursor, etc.)
+  ')"
+fi
 
 message="$(printf '%s' "$message" | sed -e 's/^```[a-zA-Z]*$//' -e 's/^```$//' | \
   awk 'NF || p {p=1; print}')"
