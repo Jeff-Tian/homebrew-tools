@@ -32,7 +32,7 @@ git -C "$sandbox/repo" add file.txt
 output="$(cd "$sandbox/repo" && PATH="$sandbox/bin:$PATH" COPILOT_ARGS_FILE="$sandbox/copilot-args" "$repo_root/bin/git-auto-commit" --print --no-gitmoji)"
 
 test "$output" = 'fix(cli): generate commit messages with copilot'
-grep -qx -- '--model=claude-opus-5.5' "$sandbox/copilot-args"
+grep -qx -- '--model=auto' "$sandbox/copilot-args"
 grep -qx -- '--prompt' "$sandbox/copilot-args"
 grep -qx -- '--silent' "$sandbox/copilot-args"
 grep -qx -- '--no-custom-instructions' "$sandbox/copilot-args"
