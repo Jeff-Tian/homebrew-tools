@@ -2,11 +2,11 @@
 # git-dco — one-shot DCO sign-off hook installer
 #
 # Usage:
-#   git dco init            Install per-repo hook (.githooks/prepare-commit-msg)
-#                           and set core.hooksPath to .githooks (local)
+#   git dco init            Install into the active hooks directory (local)
+#                           without changing core.hooksPath or other hooks
 #   git dco init --global   Install to ~/.githooks and set core.hooksPath globally
 #   git dco check           Diagnose current configuration
-#   git dco uninstall       Remove per-repo DCO hook and unset local hooksPath
+#   git dco uninstall       Restore the original hook; keep hooksPath unchanged
 #   git dco --version       Print version
 #
 # The installed hook auto-appends a Signed-off-by trailer to every commit
@@ -14,10 +14,14 @@
 
 set -euo pipefail
 
-VERSION="0.1.0"
+VERSION="0.1.1"
 
 HOOK_BODY='#!/bin/sh
 # Auto sign-off for DCO (installed by `git dco`)
+original="$(dirname "$0")/prepare-commit-msg.git-dco-original"
+if [ -x "$original" ]; then
+  "$original" "$@" || exit $?
+fi
 COMMIT_MSG_FILE=$1
 COMMIT_SOURCE=${2:-}
 [ "$COMMIT_SOURCE" = "merge" ] && exit 0
@@ -30,33 +34,76 @@ usage() {
   sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'
 }
 
-write_hook() {
-  local dir=$1
-  mkdir -p "$dir"
-  printf '%s' "$HOOK_BODY" > "$dir/prepare-commit-msg"
-  chmod +x "$dir/prepare-commit-msg"
+is_dco_hook() {
+  [ -f "$1" ] && [ "$(cat "$1")" = "$(printf '%s' "$HOOK_BODY")" ]
 }
 
-install_repo() {
-  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+is_legacy_hook() {
+  [ -f "$1" ] && [ "$(cat "$1")" = "$(printf '%s' "$HOOK_BODY" | sed '/^original=/,/^fi$/d')" ]
+}
+
+validate_hook() {
+  local path=$1 backup="$1.git-dco-original"
+  if [ -L "$path" ] || [ -L "$backup" ] ||
+     { [ -e "$path" ] && [ ! -f "$path" ]; } ||
+     { [ -e "$backup" ] && [ ! -f "$backup" ]; }; then
+    echo "Refusing unsupported hook path: $path" >&2
+    exit 1
+  fi
+}
+
+write_hook() {
+  local dir=$1 path="$1/prepare-commit-msg"
+  validate_hook "$path"
+  if is_dco_hook "$path"; then chmod +x "$path"; return; fi
+  if [ -e "$path.git-dco-original" ] ||
+     { [ -f "$path" ] && grep -q '^# Auto sign-off for DCO' "$path" && ! is_legacy_hook "$path"; }; then
+    echo "Refusing to overwrite edited DCO hook or existing backup: $path" >&2
+    exit 1
+  fi
+  mkdir -p "$dir"
+  if [ -f "$path" ] && ! is_legacy_hook "$path"; then
+    mv "$path" "$path.git-dco-original"
+  fi
+  printf '%s' "$HOOK_BODY" > "$path"
+  chmod +x "$path"
+}
+
+repo_hooks_directory() {
+  git rev-parse --show-toplevel >/dev/null 2>&1 || {
     echo "✗ Not inside a git repository." >&2
     exit 1
   }
-  local root
-  root=$(git rev-parse --show-toplevel)
-  write_hook "$root/.githooks"
-  git -C "$root" config --local core.hooksPath .githooks
-  echo "✓ Installed $root/.githooks/prepare-commit-msg"
-  echo "✓ Set core.hooksPath = .githooks (local)"
+  if ! git config --local --get core.hooksPath >/dev/null &&
+     ! git config --worktree --get core.hooksPath >/dev/null &&
+     git config --get core.hooksPath >/dev/null; then
+    echo "Inherited core.hooksPath: refusing to modify shared hooks. Use init --global or configure a repository-local hooks directory." >&2
+    exit 1
+  fi
+  git rev-parse --git-path hooks
+}
+
+install_repo() {
+  local dir
+  dir=$(repo_hooks_directory)
+  write_hook "$dir"
+  echo "✓ Installed $dir/prepare-commit-msg (core.hooksPath unchanged)"
   echo
   echo "Next: commit normally — Signed-off-by trailer will be appended automatically."
 }
 
 install_global() {
-  write_hook "$HOME/.githooks"
-  git config --global core.hooksPath "$HOME/.githooks"
-  echo "✓ Installed $HOME/.githooks/prepare-commit-msg"
-  echo "✓ Set core.hooksPath = $HOME/.githooks (global)"
+  local dir
+  dir=$(git config --global core.hooksPath || echo "$HOME/.githooks")
+  if [ -z "$dir" ]; then echo "Empty global hooksPath." >&2; exit 1; fi
+  case "$dir" in
+    /*) ;;
+    *) echo "Relative global hooksPath: choose an absolute path before global installation." >&2; exit 1 ;;
+  esac
+  write_hook "$dir"
+  git config --global core.hooksPath "$dir"
+  echo "✓ Installed $dir/prepare-commit-msg"
+  echo "✓ Set core.hooksPath = $dir (global)"
 }
 
 check() {
@@ -70,15 +117,12 @@ check() {
     echo "repo root       : $root"
     echo "local hooksPath : $(git -C "$root" config --local core.hooksPath || echo '(unset)')"
     local hp
-    hp=$(git -C "$root" config core.hooksPath || echo .git/hooks)
-    case "$hp" in
-      /*) ;;
-      *)  hp="$root/$hp" ;;
-    esac
-    if [ -x "$hp/prepare-commit-msg" ]; then
-      echo "✓ Executable prepare-commit-msg found at $hp"
+    hp=$(git rev-parse --git-path hooks)
+    if { is_dco_hook "$hp/prepare-commit-msg" || is_legacy_hook "$hp/prepare-commit-msg"; } &&
+       [ -x "$hp/prepare-commit-msg" ]; then
+      echo "✓ DCO prepare-commit-msg found at $hp"
     else
-      echo "✗ No executable prepare-commit-msg in $hp"
+      echo "✗ No unmodified executable DCO hook in $hp"
     fi
   else
     echo "(not inside a git repository — skipping repo-level checks)"
@@ -86,20 +130,26 @@ check() {
 }
 
 uninstall_repo() {
-  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
-    echo "✗ Not inside a git repository." >&2
+  local dir path backup
+  dir=$(repo_hooks_directory)
+  path="$dir/prepare-commit-msg"
+  backup="$path.git-dco-original"
+  validate_hook "$path"
+  if is_dco_hook "$path" || is_legacy_hook "$path"; then
+    rm "$path"
+    if [ -f "$backup" ]; then mv "$backup" "$path"; fi
+  elif [ -e "$path" ] || [ -e "$backup" ]; then
+    echo "Refusing to remove edited or unowned hook: $path" >&2
     exit 1
-  }
-  local root
-  root=$(git rev-parse --show-toplevel)
-  git -C "$root" config --local --unset core.hooksPath 2>/dev/null || true
-  rm -f "$root/.githooks/prepare-commit-msg"
-  # Clean up empty dir
-  rmdir "$root/.githooks" 2>/dev/null || true
-  echo "✓ Removed per-repo DCO hook and unset local core.hooksPath"
+  fi
+  echo "✓ Removed DCO wrapper (core.hooksPath and other hooks unchanged)"
 }
 
 cmd=${1:-}
+if [ "$#" -gt 1 ] && ! { [ "$#" = 2 ] && [ "$cmd" = init ] && [ "$2" = --global ]; }; then
+  usage >&2
+  exit 2
+fi
 case "$cmd" in
   init)
     shift

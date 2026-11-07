@@ -31,6 +31,9 @@ jobs:
       - name: Test git-agent-guard
         run: bash tests/git-agent-guard.sh
 
+      - name: Test DCO and agent guard coexistence
+        run: bash tests/git-dco.sh
+
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@main
         with:
@@ -76,6 +79,7 @@ jobs:
           git config user.name "CI Bot"
           git-dco init
           git-dco check
+          hooks="$(git rev-parse --git-path hooks)"
           echo hi > f
           git add f
           git commit -q -m "ci commit"
@@ -83,7 +87,7 @@ jobs:
           echo "$msg"
           echo "$msg" | grep -q "^Signed-off-by: CI Bot <ci@example.com>$"
           git-dco uninstall
-          test ! -e .githooks/prepare-commit-msg
+          test ! -e "$hooks/prepare-commit-msg"
 
       - name: brew test
         run: brew test jeff-tian/tools/git-dco

@@ -1,5 +1,5 @@
 {
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "One-shot DCO sign-off hook installer for git repositories",
     "homepage": "https://github.com/Jeff-Tian/homebrew-tools",
     "license": "MIT",

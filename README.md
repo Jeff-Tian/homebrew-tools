@@ -187,7 +187,7 @@ having to remember `git commit -s`.
 ```sh
 brew install jeff-tian/tools/git-dco
 
-# Per-repo install (recommended — keeps the hook visible to teammates)
+# Per-repo install (recommended)
 cd ~/some/repo
 git dco init
 
@@ -203,11 +203,20 @@ git dco uninstall
 
 #### What `git dco init` does
 
-1. Writes `.githooks/prepare-commit-msg` in the current repo.
-2. Sets `git config --local core.hooksPath .githooks`.
+1. Wraps `prepare-commit-msg` in the active hooks directory, preserving any
+   existing hook in a sibling `.git-dco-original` file and running it first.
+2. Leaves `core.hooksPath` and all other hooks unchanged. With no configuration,
+   Git's own hooks directory is used; existing `.githooks` installs keep working.
 3. From now on, every `git commit` in this repo auto-appends a `Signed-off-by`
    trailer matching `user.email` (DCO requires the trailer email to match the
    commit author email).
+
+Installation is idempotent, including upgrades from the unmodified 0.1.0 hook.
+Uninstall restores the original hook without unsetting `core.hooksPath`; it
+refuses to overwrite later edits. Per-repo installation refuses inherited
+global/system hooks paths to avoid affecting other repositories.
+`init --global` explicitly installs globally, preserving an existing absolute
+global hooks path (or choosing `~/.githooks` if unset).
 
 #### Local development / testing the formula
 
@@ -242,11 +251,12 @@ status. `prepare-commit-msg` (including the DCO hook) is left untouched.
 Repeated installation is safe; uninstall restores the original hooks and
 refuses to overwrite later edits.
 
-If using `git dco`, run `git dco init` **before** `git agent-guard init`.
-Changing `core.hooksPath` later selects another directory and can deactivate
-the guard; rerun `git agent-guard check` after such changes. Inherited global
-or system hooks paths are not modified: choose a repository-local hooks
-directory, preserving your existing hooks, before installing.
+With git-dco 0.1.1 or newer, `git dco init` and `git agent-guard init` can run
+in either order; repeated installs and uninstalling one leave the other intact.
+Changing `core.hooksPath` manually (or configuring a global path) still selects
+another directory: rerun both checks after such changes. Inherited global or
+system hooks paths are not modified by per-repo installation; choose a
+repository-local hooks directory, preserving your existing hooks, first.
 
 The guard detects nonempty `AI_AGENT` or `COPILOT_AGENT_SESSION_ID`.
 Human terminals without those markers are unaffected. Agent launchers must
@@ -265,6 +275,7 @@ From the repository root, run the `git-auto-commit` tests with Bash:
 ```bash
 bash tests/git-auto-commit.sh
 bash tests/git-agent-guard.sh
+bash tests/git-dco.sh
 ```
 
 With RTK installed, the equivalent command is:
