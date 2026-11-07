@@ -218,12 +218,53 @@ brew tap jeff-tian/tools "$(pwd)"
 brew install --HEAD jeff-tian/tools/git-dco
 ```
 
+### `git-agent-guard`
+
+One-shot installer that blocks agent-initiated commits and pushes without
+disabling existing formatting, DCO or other Git hooks.
+
+```sh
+brew install jeff-tian/tools/git-agent-guard
+
+cd ~/some/repo
+git agent-guard init
+git agent-guard check
+
+# Restore the original hooks when no longer needed.
+git agent-guard uninstall
+```
+
+`init` wraps `pre-commit` and `pre-push` in the active hooks directory. It does
+not change `core.hooksPath`; with no configuration, Git's own hooks directory
+is used. Existing hooks are moved to sibling `.git-agent-guard-original`
+files and run after the guard, preserving their arguments, stdin and exit
+status. `prepare-commit-msg` (including the DCO hook) is left untouched.
+Repeated installation is safe; uninstall restores the original hooks and
+refuses to overwrite later edits.
+
+If using `git dco`, run `git dco init` **before** `git agent-guard init`.
+Changing `core.hooksPath` later selects another directory and can deactivate
+the guard; rerun `git agent-guard check` after such changes. Inherited global
+or system hooks paths are not modified: choose a repository-local hooks
+directory, preserving your existing hooks, before installing.
+
+The guard detects nonempty `AI_AGENT` or `COPILOT_AGENT_SESSION_ID`.
+Human terminals without those markers are unaffected. Agent launchers must
+set a marker; unmarked agents cannot be detected. This is an accident guard,
+not a security boundary: repository agent instructions must also prohibit
+`--no-verify`, clearing markers and modifying hooks to bypass it.
+
+Installation is per repository/machine and must be repeated after cloning;
+it does not run automatically during `brew install` or `git clone`.
+Only Homebrew packaging is provided for this tool, not Scoop.
+
 ## Running tests
 
 From the repository root, run the `git-auto-commit` tests with Bash:
 
 ```bash
 bash tests/git-auto-commit.sh
+bash tests/git-agent-guard.sh
 ```
 
 With RTK installed, the equivalent command is:

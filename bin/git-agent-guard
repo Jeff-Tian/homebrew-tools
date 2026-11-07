@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# git-agent-guard — install agent-blocking hooks without replacing existing checks
+set -euo pipefail
+
+VERSION="0.1.0"
+HOOK_BODY='#!/bin/sh
+# Installed by git-agent-guard; shortcut: environment markers are not a security boundary.
+if [ -n "${AI_AGENT:-}" ] || [ -n "${COPILOT_AGENT_SESSION_ID:-}" ]; then
+  echo "git commit/push blocked: AI agent session. Ask the user to run it in their own terminal." >&2
+  exit 1
+fi
+original="$(dirname "$0")/$(basename "$0").git-agent-guard-original"
+if [ -x "$original" ]; then
+  exec "$original" "$@"
+fi
+'
+
+usage() {
+  cat <<'EOF'
+Usage: git agent-guard init | check | uninstall
+       git agent-guard --version
+
+init       Wrap pre-commit and pre-push in the current repository's active
+           hooks directory. Preserve existing hooks and core.hooksPath.
+check      Check whether both hooks are installed.
+uninstall  Restore the original hooks; refuse to overwrite later edits.
+
+Agents with AI_AGENT or COPILOT_AGENT_SESSION_ID are blocked.
+Human terminals without those markers are unaffected. No global install.
+EOF
+}
+
+hooks_directory() {
+  git rev-parse --show-toplevel >/dev/null 2>&1 || {
+    echo "Not inside a git repository." >&2
+    exit 1
+  }
+  git rev-parse --git-path hooks
+}
+
+require_local_hooks() {
+  if ! git config --local --get core.hooksPath >/dev/null &&
+     ! git config --worktree --get core.hooksPath >/dev/null &&
+     git config --get core.hooksPath >/dev/null; then
+    echo "Inherited core.hooksPath: refusing to modify shared hooks. Configure a repository-local hooks directory first." >&2
+    exit 1
+  fi
+}
+
+is_installed() {
+  [ -f "$1" ] && [ "$(cat "$1")" = "$(printf '%s' "$HOOK_BODY")" ]
+}
+
+preflight() {
+  local dir=$1 action=$2 hook path backup
+  for hook in pre-commit pre-push; do
+    path="$dir/$hook"
+    backup="$path.git-agent-guard-original"
+    if [ -L "$path" ] || [ -L "$backup" ] ||
+       { [ -e "$path" ] && [ ! -f "$path" ]; } ||
+       { [ -e "$backup" ] && [ ! -f "$backup" ]; }; then
+      echo "Refusing unsupported hook path: $path" >&2
+      exit 1
+    fi
+    if is_installed "$path"; then continue; fi
+    if [ -e "$backup" ] || { [ "$action" = uninstall ] && [ -e "$path" ]; } ||
+       { [ -f "$path" ] && grep -q '^# Installed by git-agent-guard;' "$path"; }; then
+      echo "Refusing to overwrite edited hook or existing backup: $path" >&2
+      exit 1
+    fi
+  done
+}
+
+install_repo() {
+  local dir hook path
+  dir="$(hooks_directory)"
+  require_local_hooks
+  preflight "$dir" init
+  mkdir -p "$dir"
+  for hook in pre-commit pre-push; do
+    path="$dir/$hook"
+    if is_installed "$path"; then continue; fi
+    if [ -f "$path" ]; then mv "$path" "$path.git-agent-guard-original"; fi
+    printf '%s' "$HOOK_BODY" > "$path"
+    chmod +x "$path"
+  done
+  echo "Installed git-agent-guard in $dir (core.hooksPath unchanged)."
+}
+
+check_repo() {
+  local dir hook status=0
+  dir="$(hooks_directory)"
+  for hook in pre-commit pre-push; do
+    if is_installed "$dir/$hook" && [ -x "$dir/$hook" ]; then
+      echo "$hook: installed ($dir)"
+    else
+      echo "$hook: missing or modified ($dir)"
+      status=1
+    fi
+  done
+  return "$status"
+}
+
+uninstall_repo() {
+  local dir hook path backup
+  dir="$(hooks_directory)"
+  require_local_hooks
+  preflight "$dir" uninstall
+  for hook in pre-commit pre-push; do
+    path="$dir/$hook"
+    backup="$path.git-agent-guard-original"
+    if is_installed "$path"; then
+      rm "$path"
+      if [ -f "$backup" ]; then mv "$backup" "$path"; fi
+    fi
+  done
+  echo "Uninstalled git-agent-guard from $dir (core.hooksPath unchanged)."
+}
+
+if [ "$#" -gt 1 ]; then usage >&2; exit 2; fi
+case "${1:-}" in
+  init) install_repo ;;
+  check) check_repo ;;
+  uninstall) uninstall_repo ;;
+  -v|--version) echo "git-agent-guard $VERSION" ;;
+  -h|--help|"") usage ;;
+  *) usage >&2; exit 2 ;;
+esac

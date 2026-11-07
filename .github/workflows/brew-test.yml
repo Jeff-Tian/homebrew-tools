@@ -28,6 +28,9 @@ jobs:
       - name: Checkout tap
         uses: actions/checkout@v4
 
+      - name: Test git-agent-guard
+        run: bash tests/git-agent-guard.sh
+
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@main
         with:
