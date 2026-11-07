@@ -160,3 +160,55 @@ jobs:
             -f tool=""
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test-cask:
+    name: brew test cask (macos-14)
+    runs-on: macos-14
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      HOMEBREW_NO_ANALYTICS: "1"
+    steps:
+      - name: Checkout tap
+        uses: actions/checkout@v4
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: brew style ./Casks
+        run: brew style ./Casks
+
+      - name: Link checkout as a Homebrew tap
+        run: |
+          set -euo pipefail
+          tap_dir="$(brew --repository)/Library/Taps/jeff-tian/homebrew-tools"
+          mkdir -p "$(dirname "$tap_dir")"
+          ln -snf "$GITHUB_WORKSPACE" "$tap_dir"
+          brew tap | grep -q '^jeff-tian/tools$'
+
+      - name: Trust the tap
+        run: brew trust jeff-tian/tools
+
+      - name: brew audit --cask
+        run: brew audit --cask jeff-tian/tools/font-brickverse
+
+      - name: Install the cask
+        run: brew install --cask jeff-tian/tools/font-brickverse
+
+      - name: Verify fonts are installed
+        run: |
+          set -euo pipefail
+          for f in \
+            Brickverse-Regular.ttf \
+            Brickverse-Italic.ttf \
+            Brickverse-Medium.ttf \
+            Brickverse-MediumItalic.ttf \
+            Brickverse-SemiBold.ttf \
+            Brickverse-SemiBoldItalic.ttf \
+            Brickverse-Bold.ttf \
+            Brickverse-BoldItalic.ttf; do
+            test -f "$HOME/Library/Fonts/$f" || { echo "missing $f"; exit 1; }
+          done
+          echo "All 8 Brickverse fonts are installed."

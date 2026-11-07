@@ -15,6 +15,31 @@ form also works:
 brew tap jeff-tian/tools
 ```
 
+## Install the Brickverse font
+
+This tap also ships a [Homebrew Cask](https://docs.brew.sh/Cask-Cookbook)
+for the [Brickverse](https://font.brickverse.net/) font family (OFL 1.1
+licensed). It installs all eight static TTFs (Regular, Italic, Medium,
+MediumItalic, SemiBold, SemiBoldItalic, Bold, BoldItalic) into your user
+fonts directory.
+
+```sh
+brew install --cask jeff-tian/tools/font-brickverse
+```
+
+Or, once the tap is installed, the short form works too:
+
+```sh
+brew install --cask font-brickverse
+```
+
+The cask uses `version :latest` because the download URL always points at
+the newest build. Run the following any time you want the latest fonts:
+
+```sh
+brew upgrade --cask font-brickverse
+```
+
 ## Install on Windows
 
 Even made it a private repository, use an authenticated clone and run the installer works.
