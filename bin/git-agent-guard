@@ -2,7 +2,7 @@
 # git-agent-guard — install agent-blocking hooks without replacing existing checks
 set -euo pipefail
 
-VERSION="0.1.0"
+VERSION="0.2.0"
 HOOK_BODY='#!/bin/sh
 # Installed by git-agent-guard; shortcut: environment markers are not a security boundary.
 if [ -n "${AI_AGENT:-}" ] || [ -n "${COPILOT_AGENT_SESSION_ID:-}" ]; then
@@ -14,10 +14,16 @@ if [ -x "$original" ]; then
   exec "$original" "$@"
 fi
 '
+GLOBAL_HOOK_BODY="${HOOK_BODY}"'# A global core.hooksPath hides the repository hook; run it as Git would.
+repo_hook="$(git rev-parse --git-common-dir 2>/dev/null)/hooks/$(basename "$0")"
+if [ -x "$repo_hook" ] && [ ! "$repo_hook" -ef "$0" ]; then
+  exec "$repo_hook" "$@"
+fi
+'
 
 usage() {
   cat <<'EOF'
-Usage: git agent-guard init | check | uninstall
+Usage: git agent-guard init [--global] | check [--global] | uninstall [--global]
        git agent-guard --version
 
 init       Wrap pre-commit and pre-push in the current repository's active
@@ -25,8 +31,13 @@ init       Wrap pre-commit and pre-push in the current repository's active
 check      Check whether both hooks are installed.
 uninstall  Restore the original hooks; refuse to overwrite later edits.
 
+--global   Use the global core.hooksPath (default ~/.githooks, shared with
+           `git dco init --global`) and set it when unset. Repositories'
+           own pre-commit/pre-push hooks still run. Repositories with a
+           local core.hooksPath (e.g. husky) are not covered; use init there.
+
 Agents with AI_AGENT or COPILOT_AGENT_SESSION_ID are blocked.
-Human terminals without those markers are unaffected. No global install.
+Human terminals without those markers are unaffected.
 EOF
 }
 
@@ -42,13 +53,33 @@ require_local_hooks() {
   if ! git config --local --get core.hooksPath >/dev/null &&
      ! git config --worktree --get core.hooksPath >/dev/null &&
      git config --get core.hooksPath >/dev/null; then
-    echo "Inherited core.hooksPath: refusing to modify shared hooks. Configure a repository-local hooks directory first." >&2
+    echo "Inherited core.hooksPath: refusing to modify shared hooks. Use init --global or configure a repository-local hooks directory." >&2
     exit 1
   fi
 }
 
+global_hooks_directory() {
+  local dir
+  dir="$(git config --global --type=path --get core.hooksPath || echo "$HOME/.githooks")"
+  case "$dir" in
+    /*) echo "$dir" ;;
+    *) echo "Relative or empty global hooksPath: choose an absolute path first." >&2; exit 1 ;;
+  esac
+}
+
+warn_local_override() {
+  if git rev-parse --is-inside-work-tree >/dev/null 2>&1 &&
+     { git config --local --get core.hooksPath >/dev/null ||
+       git config --worktree --get core.hooksPath >/dev/null; }; then
+    echo "Note: this repository sets its own core.hooksPath, so the global guard does not apply here. Run 'git agent-guard init' in it." >&2
+  fi
+}
+
+# Selected by --global; repo mode keeps the 0.1.0 body so existing installs stay recognised.
+BODY=$HOOK_BODY
+
 is_installed() {
-  [ -f "$1" ] && [ "$(cat "$1")" = "$(printf '%s' "$HOOK_BODY")" ]
+  [ -f "$1" ] && [ "$(cat "$1")" = "$(printf '%s' "$BODY")" ]
 }
 
 preflight() {
@@ -71,25 +102,54 @@ preflight() {
   done
 }
 
-install_repo() {
-  local dir hook path
-  dir="$(hooks_directory)"
-  require_local_hooks
+wrap_hooks() {
+  local dir=$1 hook path
   preflight "$dir" init
   mkdir -p "$dir"
   for hook in pre-commit pre-push; do
     path="$dir/$hook"
     if is_installed "$path"; then continue; fi
     if [ -f "$path" ]; then mv "$path" "$path.git-agent-guard-original"; fi
-    printf '%s' "$HOOK_BODY" > "$path"
+    printf '%s' "$BODY" > "$path"
     chmod +x "$path"
   done
+}
+
+unwrap_hooks() {
+  local dir=$1 hook path backup
+  preflight "$dir" uninstall
+  for hook in pre-commit pre-push; do
+    path="$dir/$hook"
+    backup="$path.git-agent-guard-original"
+    if is_installed "$path"; then
+      rm "$path"
+      if [ -f "$backup" ]; then mv "$backup" "$path"; fi
+    fi
+  done
+}
+
+install_repo() {
+  local dir
+  dir="$(hooks_directory)"
+  require_local_hooks
+  wrap_hooks "$dir"
   echo "Installed git-agent-guard in $dir (core.hooksPath unchanged)."
 }
 
-check_repo() {
-  local dir hook status=0
-  dir="$(hooks_directory)"
+install_global() {
+  local dir
+  dir="$(global_hooks_directory)"
+  wrap_hooks "$dir"
+  if ! git config --global --get core.hooksPath >/dev/null; then
+    git config --global core.hooksPath "$dir"
+    echo "Set core.hooksPath = $dir (global)."
+  fi
+  echo "Installed git-agent-guard in $dir (global)."
+  warn_local_override
+}
+
+check_dir() {
+  local dir=$1 hook status=0
   for hook in pre-commit pre-push; do
     if is_installed "$dir/$hook" && [ -x "$dir/$hook" ]; then
       echo "$hook: installed ($dir)"
@@ -101,27 +161,43 @@ check_repo() {
   return "$status"
 }
 
+check_global() {
+  local dir
+  if ! git config --global --get core.hooksPath >/dev/null; then
+    echo "global core.hooksPath: unset"
+    return 1
+  fi
+  dir="$(global_hooks_directory)"
+  warn_local_override
+  check_dir "$dir"
+}
+
 uninstall_repo() {
-  local dir hook path backup
+  local dir
   dir="$(hooks_directory)"
   require_local_hooks
-  preflight "$dir" uninstall
-  for hook in pre-commit pre-push; do
-    path="$dir/$hook"
-    backup="$path.git-agent-guard-original"
-    if is_installed "$path"; then
-      rm "$path"
-      if [ -f "$backup" ]; then mv "$backup" "$path"; fi
-    fi
-  done
+  unwrap_hooks "$dir"
   echo "Uninstalled git-agent-guard from $dir (core.hooksPath unchanged)."
 }
 
-if [ "$#" -gt 1 ]; then usage >&2; exit 2; fi
+uninstall_global() {
+  local dir
+  dir="$(global_hooks_directory)"
+  unwrap_hooks "$dir"
+  echo "Uninstalled git-agent-guard from $dir (global core.hooksPath unchanged; it may be shared with other hooks)."
+}
+
+global=false
+if [ "$#" = 2 ] && [ "$2" = --global ]; then
+  global=true
+  BODY=$GLOBAL_HOOK_BODY
+elif [ "$#" -gt 1 ]; then
+  usage >&2; exit 2
+fi
 case "${1:-}" in
-  init) install_repo ;;
-  check) check_repo ;;
-  uninstall) uninstall_repo ;;
+  init) if $global; then install_global; else install_repo; fi ;;
+  check) if $global; then check_global; else check_dir "$(hooks_directory)"; fi ;;
+  uninstall) if $global; then uninstall_global; else uninstall_repo; fi ;;
   -v|--version) echo "git-agent-guard $VERSION" ;;
   -h|--help|"") usage ;;
   *) usage >&2; exit 2 ;;

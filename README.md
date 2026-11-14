@@ -293,6 +293,29 @@ Installation is per repository/machine and must be repeated after cloning;
 it does not run automatically during `brew install` or `git clone`.
 Only Homebrew packaging is provided for this tool, not Scoop.
 
+#### Global install
+
+```sh
+git agent-guard init --global
+git agent-guard check --global
+git agent-guard uninstall --global
+```
+
+`--global` wraps `pre-commit` and `pre-push` in the global `core.hooksPath`
+(default `~/.githooks`, the same directory `git dco init --global` uses) and
+sets that path when it is unset, so every repository is covered without a
+per-repo install. A global hooks path normally hides each repository's own
+`.git/hooks`; the global guard therefore runs the repository's own
+`pre-commit`/`pre-push` after the check, unless an existing global hook was
+wrapped, in which case that hook runs instead. Other hook types follow plain
+Git semantics.
+
+Repositories with a local `core.hooksPath` (for example husky) override the
+global path and are not covered; `check --global` warns about this, and
+`git agent-guard init` adds the guard there. `uninstall --global` restores
+wrapped hooks but leaves `core.hooksPath` unchanged because the directory may
+be shared with other hooks; unset it manually if nothing else uses it.
+
 ## Running tests
 
 From the repository root, run the `git-auto-commit` tests with Bash:
