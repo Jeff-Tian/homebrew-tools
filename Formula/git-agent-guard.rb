@@ -2,8 +2,9 @@ class GitAgentGuard < Formula
   desc "One-shot installer blocking agent commits and pushes while preserving Git hooks"
   homepage "https://github.com/Jeff-Tian/homebrew-tools"
   url "https://github.com/Jeff-Tian/homebrew-tools.git",
-      branch: "main",
-      using:  :git
+      branch:   "main",
+      revision: "7fa0e8a86820fd2f94a57b4b3594941a46595264",
+      using:    :git
   version "0.2.0"
   license "MIT"
   head "https://github.com/Jeff-Tian/homebrew-tools.git", branch: "main"

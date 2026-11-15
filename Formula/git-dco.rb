@@ -2,8 +2,9 @@ class GitDco < Formula
   desc "One-shot DCO sign-off hook installer for git repositories"
   homepage "https://github.com/Jeff-Tian/homebrew-tools"
   url "https://github.com/Jeff-Tian/homebrew-tools.git",
-      branch: "main",
-      using:  :git
+      branch:   "main",
+      revision: "ac40d8b498108daa45284269f8a807756d0324f8",
+      using:    :git
   version "0.1.1"
   license "MIT"
   head "https://github.com/Jeff-Tian/homebrew-tools.git", branch: "main"

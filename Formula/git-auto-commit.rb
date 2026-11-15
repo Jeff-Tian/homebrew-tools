@@ -2,8 +2,9 @@ class GitAutoCommit < Formula
   desc "Generate Conventional commit messages with gitmoji emoji from staged diff"
   homepage "https://github.com/Jeff-Tian/homebrew-tools"
   url "https://github.com/Jeff-Tian/homebrew-tools.git",
-      branch: "main",
-      using:  :git
+      branch:   "main",
+      revision: "55e9fa73250263a22647967ac8e30b267d7b92cb",
+      using:    :git
   version "0.5.0"
   license "MIT"
   head "https://github.com/Jeff-Tian/homebrew-tools.git", branch: "main"
@@ -15,9 +16,9 @@ class GitAutoCommit < Formula
     v = JSON.parse(json)["version"]
 
     # Source scripts from the tap directory rather than the formula's URL
-    # source tree. The `url` tracks `main`, so during PR CI the source tree
-    # lacks files that only exist on the PR branch; the tap is the checked-out
-    # PR branch (and the main repo for end users), so it always has them.
+    # source tree. The `url` is pinned to a revision, so during PR CI the
+    # source tree lacks files that only exist on the PR branch; the tap is the
+    # checked-out PR branch (and the main repo for end users), so it always has them.
     # Copy into the build dir so Homebrew's sandbox can install them.
     tap_bin = File.expand_path("../bin", __dir__)
     cp "#{tap_bin}/git-auto-commit", "bin/git-auto-commit"
