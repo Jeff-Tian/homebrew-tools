@@ -1,8 +1,8 @@
 name: auto-release
 
-# Detects a VERSION bump in any bin/<tool> on push to main and publishes
-# a matching GitHub release. Tag format: <tool>-v<version>
-# Source of truth: the `version` field in bucket/<tool>.json.
+# Publishes GitHub releases for tools after a version bump.
+# Tag format: <tool>-v<version>
+# Source of truth: the Formula version; bucket manifests, when present, must match.
 
 on:
   workflow_dispatch:
@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        tool: [git-auto-commit, git-dco]
+        tool: [git-auto-commit, git-dco, git-agent-guard]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,44 +41,35 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Read VERSION from bucket/${{ matrix.tool }}.json
+      - name: Read version from Formula/${{ matrix.tool }}.rb
         if: steps.gate.outputs.skip != 'true'
         id: read
         run: |
           set -euo pipefail
+          formula="Formula/${{ matrix.tool }}.rb"
           json="bucket/${{ matrix.tool }}.json"
-          if [ ! -f "$json" ]; then
-            echo "::notice::$json not found, skipping"
-            echo "version=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          version="$(jq -r '.version' "$json")"
-          if [ -z "$version" ] || [ "$version" = "null" ]; then
-            echo "::error::No .version field found in $json"
+          if [ ! -f "$formula" ]; then
+            echo "::error::$formula not found"
             exit 1
+          fi
+          version="$(sed -n 's/^  version "\([^"]*\)"$/\1/p' "$formula")"
+          if [ -z "$version" ]; then
+            echo "::error::No version found in $formula"
+            exit 1
+          fi
+          if [ -f "$json" ]; then
+            json_version="$(jq -r '.version' "$json")"
+            if [ -z "$json_version" ] || [ "$json_version" = "null" ]; then
+              echo "::error::No .version field found in $json"
+              exit 1
+            fi
+            if [ "$json_version" != "$version" ]; then
+              echo "::error::Version mismatch: Formula says $version, JSON says $json_version"
+              exit 1
+            fi
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Detected: ${{ matrix.tool }} version $version"
-
-      - name: Check formula version matches
-        if: steps.read.outputs.version != ''
-        run: |
-          set -euo pipefail
-          formula="Formula/${{ matrix.tool }}.rb"
-          json="bucket/${{ matrix.tool }}.json"
-          script_version='${{ steps.read.outputs.version }}'
-          if [ ! -f "$formula" ]; then
-            echo "::warning::$formula missing — skipping formula check"
-            exit 0
-          fi
-          # Formula now reads version from JSON via def version, so we just
-          # verify the JSON version matches what we already extracted.
-          json_version="$(jq -r '.version' "$json")"
-          if [ "$json_version" != "$script_version" ]; then
-            echo "::error::Version mismatch: JSON says $json_version, read step says $script_version"
-            exit 1
-          fi
-          echo "Formula reads version $json_version from JSON — consistent."
 
       - name: Check tag does not already exist
         if: steps.read.outputs.version != ''

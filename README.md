@@ -342,8 +342,8 @@ repository and a mock Copilot CLI; no Copilot login or AI requests are needed.
 1. Commit the source changes first. The formula's `revision` must identify a
    commit that contains the source to install; do not use `git rev-parse HEAD`
    before this commit.
-2. Run `./scripts/bump-version.sh <tool-name> <new-version>` to update the
-   versions in `bucket/<tool-name>.json` and `Formula/<tool-name>.rb`.
+2. Run `./scripts/bump-version.sh <tool-name> <new-version>` to update
+   `Formula/<tool-name>.rb` and, when present, `bucket/<tool-name>.json`.
 3. In `Formula/<tool-name>.rb`, set `revision` to the full 40-character SHA
    from `git rev-parse HEAD`. The bump script does not update this field yet.
 4. Review and commit the version metadata, then push `main`. The auto-release

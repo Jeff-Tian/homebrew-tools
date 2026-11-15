@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# bump-version — update version across all files from the canonical JSON source.
+# bump-version — update Formula and Scoop manifest versions.
 #
 # Usage:
-#   ./scripts/bump-version.sh 0.2.4
+#   ./scripts/bump-version.sh <tool-name> 0.2.4
 #
 # Updates:
-#   1. bucket/<tool>.json  .version
-#   2. Formula/<tool>.rb  version "x.y.z"
+#   1. Formula/<tool>.rb  version "x.y.z"
+#   2. bucket/<tool>.json  .version, when the Scoop manifest exists
 #
 # The bin/<tool> script gets its version injected at brew install time
 # via inreplace, so it does NOT need manual updates.
@@ -25,19 +25,16 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 JSON="$ROOT/bucket/${TOOL}.json"
 FORMULA="$ROOT/Formula/${TOOL}.rb"
 
-if [ ! -f "$JSON" ]; then
-  echo "✗ Not found: $JSON" >&2
-  exit 1
-fi
-
 if [ ! -f "$FORMULA" ]; then
   echo "✗ Not found: $FORMULA" >&2
   exit 1
 fi
 
-# Update JSON
-jq --arg v "$NEW_VERSION" '.version = $v' "$JSON" > "${JSON}.tmp" && mv "${JSON}.tmp" "$JSON"
-echo "✓ Updated $JSON"
+# Update the Scoop manifest for tools that provide one.
+if [ -f "$JSON" ]; then
+  jq --arg v "$NEW_VERSION" '.version = $v' "$JSON" > "${JSON}.tmp" && mv "${JSON}.tmp" "$JSON"
+  echo "✓ Updated $JSON"
+fi
 
 # Update formula
 sed -i.bak "s/^  version \"[^\"]*\"/  version \"${NEW_VERSION}\"/" "$FORMULA"
