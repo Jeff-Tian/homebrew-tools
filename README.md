@@ -319,6 +319,21 @@ global path and are not covered; `check --global` warns about this, and
 wrapped hooks but leaves `core.hooksPath` unchanged because the directory may
 be shared with other hooks; unset it manually if nothing else uses it.
 
+### `id6-mail-mcp`
+
+Local stdio MCP server that lets AI agents search and read the signed-in user's
+Outlook mailbox through [id6](https://id6.fly.dev/). Read-only, with no send or
+delete tools.
+
+```sh
+brew install jeff-tian/tools/id6-mail-mcp
+```
+
+Requires an id6 account with Outlook connected at `https://id6.fly.dev/outlook`.
+See the
+[id6-mail-mcp README](https://github.com/Jeff-Tian/id6-mail-mcp) for MCP client
+configuration and the `search_mail` / `get_mail` tools.
+
 ## Running tests
 
 From the repository root, run the `git-auto-commit` tests with Bash:
@@ -353,6 +368,10 @@ repository and a mock Copilot CLI; no Copilot login or AI requests are needed.
 4. Review and commit the version metadata, then push `main`. The auto-release
    workflow creates the `<tool-name>-v<new-version>` tag and GitHub release;
    do not create the tag manually.
+
+NuGet-backed formulas such as `id6-mail-mcp` are exempt from the steps above:
+the `bump-nuget-formulas` workflow checks NuGet hourly and updates the formula
+version, URL and SHA256 automatically.
 
 ## License
 
