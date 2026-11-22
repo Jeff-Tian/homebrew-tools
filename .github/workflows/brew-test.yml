@@ -34,6 +34,9 @@ jobs:
       - name: Test DCO and agent guard coexistence
         run: bash tests/git-dco.sh
 
+      - name: Test bump-version
+        run: bash tests/bump-version.sh
+
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@main
         with:

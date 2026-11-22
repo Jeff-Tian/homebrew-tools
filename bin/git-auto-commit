@@ -32,7 +32,12 @@
 #   git auto-commit --no-sign-off         # skip DCO Signed-off-by trailer
 #   git auto-commit --no-gitmoji           # skip gitmoji emoji prefix (enabled by default)
 #   git auto-commit --gitmoji              # explicitly enable gitmoji (default)
+#   git auto-commit --reuse               # retry with the message saved by a failed commit (no AI call)
 #   git auto-commit --version
+#
+# Retry:
+#   The message is saved to .git/AUTO_COMMIT_MSG until the commit succeeds, so
+#   a commit rejected by a hook can be retried with `git auto-commit --reuse`.
 #
 # Scope rules:
 #   The generated subject is `<type>(<scope>): <subject>` where <scope> is a
@@ -86,12 +91,13 @@ else
   DEFAULT_MODEL=""
 fi
 
-usage() { sed -n '2,37p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,42p' "$0" | sed 's/^# \{0,1\}//'; }
 
 assume_yes=0
 stage_all=0
 dry_run=0
 print_only=0
+reuse=0
 include_body=1
 sign_off=1
 no_ticket=0
@@ -109,6 +115,7 @@ for arg in "$@"; do
     -a|--all) stage_all=1 ;;
     --dry-run) dry_run=1 ;;
     --print) print_only=1; dry_run=1; assume_yes=1 ;;
+    --reuse) reuse=1 ;;
     --no-body) include_body=0 ;;
     --sign-off|-s) sign_off=1 ;;
     --no-sign-off) sign_off=0 ;;
@@ -187,6 +194,62 @@ fi
 if git diff --cached --quiet; then
   echo "✗ Nothing staged. Use -a to stage tracked changes, or 'git add' first." >&2
   exit 1
+fi
+
+msg_file="$(git rev-parse --git-path AUTO_COMMIT_MSG)"
+
+confirm_and_commit() {
+  if [ "$print_only" = "1" ]; then
+    printf '%s\n' "$message"
+    exit 0
+  fi
+
+  echo "── proposed commit ───────────────────────────────"
+  printf '%s\n' "$message"
+  echo "──────────────────────────────────────────────────"
+
+  if [ "$dry_run" = "1" ]; then
+    echo "(dry-run — not committing)"
+    exit 0
+  fi
+
+  if [ "$assume_yes" = "0" ]; then
+    if [ ! -t 0 ]; then
+      echo "✗ Non-interactive shell — pass -y to commit without prompting." >&2
+      exit 1
+    fi
+    printf "Commit with this message? [Y/n/e(dit)] "
+    read -r reply </dev/tty
+    case "${reply:-y}" in
+      n|N|no|NO) echo "Aborted."; exit 1 ;;
+      e|E|edit)
+        printf '%s\n' "$message" > "$msg_file"
+        "${EDITOR:-vi}" "$msg_file" </dev/tty >/dev/tty
+        message="$(cat "$msg_file")"
+        [ -z "${message//[[:space:]]/}" ] && { echo "✗ Empty message."; exit 1; }
+        ;;
+      *) ;;
+    esac
+  fi
+
+  printf '%s\n' "$message" > "$msg_file"
+  commit_args=(-F "$msg_file")
+  [ "$sign_off" = "1" ] && commit_args+=(-s)
+  if git commit "${commit_args[@]}"; then
+    rm -f "$msg_file"
+  else
+    rc=$?
+    echo "✗ git commit failed (exit $rc). Message kept in $msg_file" >&2
+    echo "  Fix the cause, then retry without calling the AI: git auto-commit --reuse" >&2
+    exit "$rc"
+  fi
+  exit 0
+}
+
+if [ "$reuse" = "1" ]; then
+  [ -s "$msg_file" ] || { echo "✗ No saved message at $msg_file." >&2; exit 1; }
+  message="$(cat "$msg_file")"
+  confirm_and_commit
 fi
 
 # Collect context for the model.
@@ -540,44 +603,4 @@ ${rest}"
   fi
 fi
 
-if [ "$print_only" = "1" ]; then
-  printf '%s\n' "$message"
-  exit 0
-fi
-
-echo "── proposed commit ───────────────────────────────"
-printf '%s\n' "$message"
-echo "──────────────────────────────────────────────────"
-
-if [ "$dry_run" = "1" ]; then
-  echo "(dry-run — not committing)"
-  exit 0
-fi
-
-if [ "$assume_yes" = "0" ]; then
-  if [ ! -t 0 ]; then
-    echo "✗ Non-interactive shell — pass -y to commit without prompting." >&2
-    exit 1
-  fi
-  printf "Commit with this message? [Y/n/e(dit)] "
-  read -r reply </dev/tty
-  case "${reply:-y}" in
-    n|N|no|NO) echo "Aborted."; exit 1 ;;
-    e|E|edit)
-      tmp="$(mktemp -t git-auto-commit.XXXXXX)"
-      printf '%s\n' "$message" > "$tmp"
-      "${EDITOR:-vi}" "$tmp" </dev/tty >/dev/tty
-      message="$(cat "$tmp")"
-      rm -f "$tmp"
-      [ -z "${message//[[:space:]]/}" ] && { echo "✗ Empty message."; exit 1; }
-      ;;
-    *) ;;
-  esac
-fi
-
-tmp="$(mktemp -t git-auto-commit.XXXXXX)"
-printf '%s\n' "$message" > "$tmp"
-commit_args=(-F "$tmp")
-[ "$sign_off" = "1" ] && commit_args+=(-s)
-git commit "${commit_args[@]}"
-rm -f "$tmp"
+confirm_and_commit

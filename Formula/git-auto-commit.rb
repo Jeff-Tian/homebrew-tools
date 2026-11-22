@@ -5,7 +5,7 @@ class GitAutoCommit < Formula
       branch:   "main",
       revision: "55e9fa73250263a22647967ac8e30b267d7b92cb",
       using:    :git
-  version "0.5.0"
+  version "0.6.0"
   license "MIT"
   head "https://github.com/Jeff-Tian/homebrew-tools.git", branch: "main"
 

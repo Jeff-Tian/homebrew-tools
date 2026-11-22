@@ -4,6 +4,9 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 sandbox="$(mktemp -d)"
 trap 'rm -rf "$sandbox"' EXIT
+# Keep the user's global git config (hooks, signing) out of the sandbox repo.
+export GIT_CONFIG_GLOBAL="$sandbox/gitconfig"
+: > "$GIT_CONFIG_GLOBAL"
 
 mkdir -p "$sandbox/bin" "$sandbox/repo"
 
@@ -149,3 +152,29 @@ COPILOT_MESSAGE='fix(ABC-123-extra, renderer#1988): preserve non-ticket scopes' 
   check_ticket 'fix(ABC-123-extra, renderer#1988): preserve non-ticket scopes' --no-ticket
 
 printf 'git-auto-commit ticket detection checks passed.\n'
+# --- Test: failed commit keeps the message; --reuse retries without the AI ---
+cat > "$sandbox/bin/copilot" <<'EOF2'
+#!/usr/bin/env bash
+printf 'fix(cli): reuse saved message\n'
+EOF2
+chmod +x "$sandbox/bin/copilot"
+printf 'reuse\n' > "$sandbox/repo/file.txt"
+git -C "$sandbox/repo" add file.txt
+hook_dir="$sandbox/hooks"
+mkdir -p "$hook_dir"
+printf '#!/bin/sh\nexit 1\n' > "$hook_dir/pre-commit"
+chmod +x "$hook_dir/pre-commit"
+git -C "$sandbox/repo" config core.hooksPath "$hook_dir"
+if (cd "$sandbox/repo" && PATH="$sandbox/bin:$PATH" "$repo_root/bin/git-auto-commit" -y --no-gitmoji --no-ticket >/dev/null 2>&1); then
+  printf 'FAIL: commit should fail when pre-commit hook fails\n' >&2
+  exit 1
+fi
+saved="$(git -C "$sandbox/repo" rev-parse --git-path AUTO_COMMIT_MSG)"
+grep -qx 'fix(cli): reuse saved message' "$sandbox/repo/$saved"
+git -C "$sandbox/repo" config --unset core.hooksPath
+printf '#!/usr/bin/env bash\nexit 99\n' > "$sandbox/bin/copilot"
+(cd "$sandbox/repo" && PATH="$sandbox/bin:$PATH" "$repo_root/bin/git-auto-commit" --reuse -y >/dev/null)
+test "$(git -C "$sandbox/repo" log -1 --pretty=%s)" = 'fix(cli): reuse saved message'
+test ! -e "$sandbox/repo/$saved"
+
+printf 'git-auto-commit --reuse check passed.\n'
