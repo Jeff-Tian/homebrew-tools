@@ -21,4 +21,15 @@ class Id6MailMcp < Formula
   test do
     assert_path_exists bin/"id6-mail-mcp"
   end
+
+  def post_install
+    # 0.1.0 predates the setup subcommand and would block waiting for MCP input.
+    # shortcut: drop this guard once 0.2.0 is the norm.
+    parts = version.to_s.split(".").first(2).map(&:to_i)
+    return if (parts <=> [0, 2]) == -1
+
+    system libexec/"id6-mail-mcp", "setup", "--command", (opt_bin/"id6-mail-mcp").to_s
+  rescue SystemCallError => e
+    opoo "Skipped MCP setup: #{e.message}"
+  end
 end
