@@ -3,8 +3,8 @@ class Id6MailMcp < Formula
   homepage "https://github.com/Jeff-Tian/id6-mail-mcp"
   url "https://api.nuget.org/v3-flatcontainer/jefftian.id6mail.mcp/0.1.0/jefftian.id6mail.mcp.0.1.0.nupkg",
       using: :nounzip
-  sha256 "33102f2fa7d6804a0ed3888fe8e1d1e22a49848a417b06e958333a2662e49e8b"
   version "0.1.0"
+  sha256 "33102f2fa7d6804a0ed3888fe8e1d1e22a49848a417b06e958333a2662e49e8b"
   license "MIT"
 
   depends_on "dotnet"
@@ -19,6 +19,6 @@ class Id6MailMcp < Formula
   end
 
   test do
-    assert_predicate bin/"id6-mail-mcp", :exist?
+    assert_path_exists bin/"id6-mail-mcp"
   end
 end
