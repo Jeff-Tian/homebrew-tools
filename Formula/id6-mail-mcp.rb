@@ -23,9 +23,10 @@ class Id6MailMcp < Formula
   end
 
   post_install_steps do
-    run "id6-mail-mcp",
-        base: :libexec,
-        args: ["setup", "--command", "#{HOMEBREW_PREFIX}/opt/id6-mail-mcp/bin/id6-mail-mcp"],
+    # `run` gives the step a closed stdin, so reattach it to the terminal for the prompt.
+    run "/bin/sh",
+        args: ["-c", "exec #{HOMEBREW_PREFIX}/opt/id6-mail-mcp/bin/id6-mail-mcp setup " \
+                     "--command #{HOMEBREW_PREFIX}/opt/id6-mail-mcp/bin/id6-mail-mcp < /dev/tty"],
         must_succeed: false
   end
 end
