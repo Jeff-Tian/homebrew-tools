@@ -1,10 +1,10 @@
 class Id6MailMcp < Formula
   desc "Read-only Outlook mail search MCP server for AI agents, via id6"
   homepage "https://github.com/Jeff-Tian/id6-mail-mcp"
-  url "https://api.nuget.org/v3-flatcontainer/jefftian.id6mail.mcp/0.3.0/jefftian.id6mail.mcp.0.3.0.nupkg",
+  url "https://api.nuget.org/v3-flatcontainer/jefftian.id6mail.mcp/0.4.0/jefftian.id6mail.mcp.0.4.0.nupkg",
       using: :nounzip
-  version "0.3.0"
-  sha256 "11519554259c2406d81f6bbe3eb5991a6d857efbeaae19c05e832d5e244cb913"
+  version "0.4.0"
+  sha256 "85a213aff4c426a24c04329751086e2ecd0ebaaf386ec46c03be5d8f50fd7815"
   license "MIT"
 
   depends_on "dotnet"
